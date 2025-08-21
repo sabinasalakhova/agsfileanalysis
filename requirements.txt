@@ -1,7 +1,4 @@
-io
-re
-typing
 numpy
 pandas
-plotly.express
+plotly
 streamlit

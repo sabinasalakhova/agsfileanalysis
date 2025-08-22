@@ -9,9 +9,6 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-
-pd.set_option('future.no_silent_downcasting', True)
-
 # --------------------------------------------------------------------------------------
 # Page config & title
 # --------------------------------------------------------------------------------------
@@ -175,6 +172,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
             renamed[c] = cc
         df = df.rename(columns=renamed)
         group_dfs[g] = df
+
     return group_dfs
 
 
@@ -186,7 +184,7 @@ def drop_singleton_rows(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     # Treat empty strings and whitespace as NaN
-    clean = df.replace(r"^\s*$", np.nan, regex=True).infer_objects(copy=False)
+    clean = df.replace(r"^\s*$", np.nan, regex=True)
     nn = clean.notna().sum(axis=1)
     return df.loc[nn > 1].reset_index(drop=True)
 
@@ -340,7 +338,7 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     final_df = merged[final_cols].copy() if final_cols else merged.copy()
 
     # Deduplicate cell text and expand rows if any " | "
-    final_df = final_df.map(deduplicate_cell)
+    final_df = final_df.applymap(deduplicate_cell)
     expanded_df = expand_rows(final_df)
 
     # Drop rows that are effectively empty (<=1 non-null)
@@ -440,7 +438,7 @@ def add_st_charts_to_excel(writer: pd.ExcelWriter, st_df: pd.DataFrame, sheet_na
             return
         cx, cy = idx[xcol], idx[ycol]
 
-        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
+        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'marker_only'})
         chart.set_title({'name': title})
         chart.set_x_axis({'name': 's (kPa)'})
         chart.set_y_axis({'name': "t = q/2 (kPa)"})
@@ -630,3 +628,4 @@ if uploaded_files:
 
 else:
     st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")
+

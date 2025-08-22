@@ -175,7 +175,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
 
     return group_dfs
 
-
+#remove empty rows
 def drop_singleton_rows(df: pd.DataFrame) -> pd.DataFrame:
     """
     Remove rows that have <=1 non-empty/non-null values across all columns.
@@ -188,7 +188,7 @@ def drop_singleton_rows(df: pd.DataFrame) -> pd.DataFrame:
     nn = clean.notna().sum(axis=1)
     return df.loc[nn > 1].reset_index(drop=True)
 
-
+#if one cell has multiple same values, leave one
 def deduplicate_cell(cell):
     if pd.isna(cell):
         return cell
@@ -199,7 +199,7 @@ def deduplicate_cell(cell):
             unique_parts.append(p)
     return " | ".join(unique_parts)
 
-
+#if one cell has multiple different values >>> expand
 def expand_rows(df: pd.DataFrame) -> pd.DataFrame:
     """
     If any cell contains " | " concatenated values, expand into multiple rows.
@@ -438,7 +438,7 @@ def add_st_charts_to_excel(writer: pd.ExcelWriter, st_df: pd.DataFrame, sheet_na
             return
         cx, cy = idx[xcol], idx[ycol]
 
-        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
+        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'marker_only'})
         chart.set_title({'name': title})
         chart.set_x_axis({'name': 's (kPa)'})
         chart.set_y_axis({'name': "t = q/2 (kPa)"})

@@ -184,7 +184,7 @@ def drop_singleton_rows(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     # Treat empty strings and whitespace as NaN
-    clean = df.replace(r"^\s*$", np.nan, regex=True)
+    clean = df.replace(r"^\s*$", np.nan, regex=True).infer_objects(copy=False)
     nn = clean.notna().sum(axis=1)
     return df.loc[nn > 1].reset_index(drop=True)
 
@@ -338,7 +338,7 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     final_df = merged[final_cols].copy() if final_cols else merged.copy()
 
     # Deduplicate cell text and expand rows if any " | "
-    final_df = final_df.applymap(deduplicate_cell)
+    final_df = final_df.map(deduplicate_cell)
     expanded_df = expand_rows(final_df)
 
     # Drop rows that are effectively empty (<=1 non-null)

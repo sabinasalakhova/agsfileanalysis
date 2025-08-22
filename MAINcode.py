@@ -1,5 +1,3 @@
-
-
 import io
 import re
 from typing import Dict, List, Tuple
@@ -184,10 +182,9 @@ def drop_singleton_rows(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     # Treat empty strings and whitespace as NaN
-    clean = df.replace(r"^\s*$", np.nan, regex=True)
+    clean = df.replace(r"^\s*$", np.nan, regex=True).infer_objects(copy=False)
     nn = clean.notna().sum(axis=1)
     return df.loc[nn > 1].reset_index(drop=True)
-
 
 def deduplicate_cell(cell):
     if pd.isna(cell):

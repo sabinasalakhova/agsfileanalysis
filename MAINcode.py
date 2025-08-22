@@ -9,6 +9,9 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+
+pd.set_option('future.no_silent_downcasting', True)
+
 # --------------------------------------------------------------------------------------
 # Page config & title
 # --------------------------------------------------------------------------------------

@@ -175,7 +175,6 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
             renamed[c] = cc
         df = df.rename(columns=renamed)
         group_dfs[g] = df
-
     return group_dfs
 
 

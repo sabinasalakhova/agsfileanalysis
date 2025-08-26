@@ -24,16 +24,16 @@ uploaded_files = st.file_uploader(
 # Helpers: AGS detection & parsing (handles AGS3 and AGS4)
 # --------------------------------------------------------------------------------------
 def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
-    """
-    Light fingerprinting of AGS3 vs AGS4 and presence of key groups.
-    Non-fatal: returns flags only.
-    """
-    results = {"AGS3": "No", "AGS4": "No", 'Contains "LOCA"': "No", "Contains **HOLE": "No"}
+
+    results = {"AGS3": "No",
+               "AGS4": "No",
+               'Contains "LOCA"': "No",
+               "Contains **HOLE": "No"}
     try:
         content = file_bytes.decode("latin-1", errors="ignore")
         lines = content.splitlines()
         for line in lines:
-            s = line.strip()
+            s = line.strip() #remove whitespaces,tabs and newline characters,store in new variable s
             if s.startswith('"GROUP"') or s.startswith("GROUP"):
                 results["AGS4"] = "Yes"
                 if '"GROUP","LOCA"' in s or "GROUP,LOCA" in s:

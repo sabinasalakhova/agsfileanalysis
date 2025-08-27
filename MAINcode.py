@@ -480,6 +480,38 @@ def add_st_charts_to_excel(writer: pd.ExcelWriter, st_df: pd.DataFrame, sheet_na
     add_scatter("s–t (Total stress)",      "s_total",     "t", "B25")
 
 
+def remove_duplicate_tests(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Identify and remove duplicate rows in triaxial summary table.
+    Uses a combination of key test parameters to identify duplicates.
+    """
+    if df.empty:
+        return df
+    
+    # Define key columns that should be unique for each test
+    key_cols = [
+        'HOLE_ID', 'SPEC_DEPTH', 'CELL', 'DEVF', 'PWPF', 
+        'TEST_TYPE', 'SOURCE_FILE', 's', 't'
+    ]
+    
+    # Use only columns that actually exist in the DataFrame
+    available_cols = [col for col in key_cols if col in df.columns]
+    
+    # If we have at least 3 identifying columns, use them for deduplication
+    if len(available_cols) >= 3:
+        # Create a temporary hash column for comparison
+        df['TEMP_HASH'] = df[available_cols].apply(
+            lambda row: hash(tuple(row.astype(str))), 
+            axis=1
+        )
+        
+        # Remove duplicates while keeping the first occurrence
+        df = df.drop_duplicates(subset=['TEMP_HASH'], keep='first')
+        df = df.drop(columns=['TEMP_HASH'])
+    
+    return df
+
+
 
 # --------------------------------------------------------------------------------------
 # Main app logic
@@ -570,7 +602,8 @@ if uploaded_files:
         # (B) Merge s,t into the Triaxial summary grid (avoid accidental many-to-many merges)
         merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in tri_df.columns]
         cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE"] if c in st_df.columns]
-        tri_df_with_st = pd.merge(tri_df, st_df[cols_from_st], on=merge_keys, how="left")
+        tri_df_with_st = tri_df_with_st.loc[:, ~tri_df_with_st.columns.duplicated()]
+        tri_df_with_st = remove_duplicate_tests(tri_df_with_st)
     
         st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
         st.dataframe(tri_df_with_st, use_container_width=True, height=350)

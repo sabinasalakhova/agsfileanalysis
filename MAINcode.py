@@ -480,36 +480,41 @@ def add_st_charts_to_excel(writer: pd.ExcelWriter, st_df: pd.DataFrame, sheet_na
     add_scatter("s–t (Total stress)",      "s_total",     "t", "B25")
     
 def remove_duplicate_tests(df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Identify and remove duplicate rows in triaxial summary table.
-        Uses a combination of key test parameters to identify duplicates.
-        """
-        if df.empty:
-            return df
-        
-        # Define key columns that should be unique for each test
-        key_cols = [
-            'HOLE_ID', 'SPEC_DEPTH', 'CELL', 'DEVF', 'PWPF', 
-            'TEST_TYPE', 'SOURCE_FILE', 's', 't'
-        ]
-        
-        # Use only columns that actually exist in the DataFrame
-        available_cols = [col for col in key_cols if col in df.columns]
-        
-        # If we have at least 3 identifying columns, use them for deduplication
-        if len(available_cols) >= 3:
-            # Create a temporary hash column for comparison
-            df['TEMP_HASH'] = df[available_cols].apply(
-                lambda row: hash(tuple(row.astype(str))), 
-                axis=1
-            )
-            
-            # Remove duplicates while keeping the first occurrence
-            df = df.drop_duplicates(subset=['TEMP_HASH'], keep='first')
-            df = df.drop(columns=['TEMP_HASH'])
-        
+ 
+    if df.empty:
         return df
-
+    
+    # Define key columns that should be unique for each test
+    key_cols = [
+        'HOLE_ID', 'SPEC_DEPTH', 'CELL', 'DEVF', 'PWPF', 
+        'TEST_TYPE', 'SOURCE_FILE'
+    ]
+    
+    # Use only columns that actually exist in the DataFrame
+    available_cols = [col for col in key_cols if col in df.columns]
+    
+    # If we have at least 3 identifying columns, use them for deduplication
+    if len(available_cols) >= 3:
+        # Create a copy of the relevant columns
+        temp_df = df[available_cols].copy()
+        
+        # Convert float columns to rounded strings for consistent comparison
+        for col in temp_df.columns:
+            if pd.api.types.is_float_dtype(temp_df[col]):
+                # Round floats to 2 decimal places and convert to string
+                temp_df[col] = temp_df[col].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else "")
+            else:
+                # Convert non-float columns to string
+                temp_df[col] = temp_df[col].astype(str)
+        
+        # Create a combined string representation for each row
+        temp_df['combined'] = temp_df.apply(lambda row: '|'.join(row.values), axis=1)
+        
+        # Identify duplicates while keeping the first occurrence
+        mask = ~temp_df.duplicated(subset=['combined'], keep='first')
+        df = df[mask].reset_index(drop=True)
+    
+    return df
 
 # --------------------------------------------------------------------------------------
 # Main app logic

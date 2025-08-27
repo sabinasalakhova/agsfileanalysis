@@ -554,25 +554,21 @@ if uploaded_files:
         st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
         st.dataframe(tri_df_with_st, use_container_width=True, height=350)
 
-
-        # s–t computations & plot
+                # s–t computations & plot
         st.markdown("#### s–t computed values")
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
         st_df = compute_s_t(tri_df, mode=mode)
-        
-        
         
                 # Download triaxial table (with s–t) + Excel Charts
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             # 1) Save the with-s,t summary (more useful than raw-only)
             tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
-        
             # 2) Save the computed s–t values (contains s_total, s_effective, s, t)
             st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
-        
             # 3) Add Excel charts (s′–t and s–t) on a 'Charts' sheet
             add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
+
         
         st.download_button(
             "📥 Download Triaxial Summary + s–t (Excel, with charts)",

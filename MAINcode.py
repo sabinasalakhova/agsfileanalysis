@@ -197,17 +197,38 @@ def deduplicate_cell(cell):
 
 
 def expand_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    If any cell contains " | " concatenated values, expand into multiple rows.
-    """
+    
+    ##Expand rows where any cell contains ' | ' separated values,
+    ##but skip expansion if all split values across columns are identical.
+    
     expanded_rows = []
+
     for _, row in df.iterrows():
-        split_values = {col: (str(row[col]).split(" | ") if pd.notna(row[col]) else [""]) for col in df.columns}
-        max_len = max(len(v) for v in split_values.values()) if split_values else 1
-        for i in range(max_len):
-            new_row = {col: (split_values[col][i] if i < len(split_values[col]) else "") for col in df.columns}
+        split_values = {
+            col: (str(row[col]).split(" | ") if pd.notna(row[col]) else [""])
+            for col in df.columns
+        }
+
+        # Check if all columns have the same repeated value
+        all_same = all(
+            len(set(values)) == 1 for values in split_values.values()
+        )
+
+        if all_same and all(len(values) > 1 for values in split_values.values()):
+            # If all values are the same and repeated, keep as single row
+            new_row = {col: split_values[col][0] for col in df.columns}
             expanded_rows.append(new_row)
-    return pd.DataFrame(expanded_rows)
+        else:
+            # Expand into multiple rows
+            max_len = max(len(v) for v in split_values.values()) if split_values else 1
+            for i in range(max_len):
+                new_row = {
+                    col: (split_values[col][i] if i < len(split_values[col]) else "")
+                    for col in df.columns
+                }
+                expanded_rows.append(new_row)
+
+    return pd.DataFrame(expanded_rows) 
 
 
 # --------------------------------------------------------------------------------------

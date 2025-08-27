@@ -1,12 +1,13 @@
 import io
 import re
-import uuid
+import uuid  # Added for unique ID generation
 from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
 # --------------------------------------------------------------------------------------
 # Page config & title
 # --------------------------------------------------------------------------------------
@@ -21,10 +22,9 @@ uploaded_files = st.file_uploader(
 )
 
 # --------------------------------------------------------------------------------------
-# Helpers:
+# Helpers: AGS detection & parsing (handles AGS3 and AGS4)
 # --------------------------------------------------------------------------------------
 def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
-
     results = {"AGS3": "No",
                "AGS4": "No",
                'Contains "LOCA"': "No",
@@ -33,7 +33,7 @@ def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
         content = file_bytes.decode("latin-1", errors="ignore")
         lines = content.splitlines()
         for line in lines:
-            s = line.strip() #remove whitespaces,tabs and newline characters,store in new variable s
+            s = line.strip()  # remove whitespaces,tabs and newline characters,store in new variable s
             if s.startswith('"GROUP"') or s.startswith("GROUP"):
                 results["AGS4"] = "Yes"
                 if '"GROUP","LOCA"' in s or "GROUP,LOCA" in s:
@@ -47,7 +47,6 @@ def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
     except Exception:
         pass
     return results
-
 
 def _split_quoted_csv(line: str) -> List[str]:
     """
@@ -63,7 +62,6 @@ def _split_quoted_csv(line: str) -> List[str]:
         return parts
     # Fallback split
     return [p.strip().strip('"') for p in re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', s)]
-
 
 def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     """
@@ -146,7 +144,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
                                 group_data[current_group][-1][field] = (prev + " | " if prev else "") + val
             continue
 
-        # when descriptors are absent
+        # DATA row fallback (both styles) when descriptors are absent
         if current_group and headings:
             if len(parts) >= len(headings):
                 row = dict(zip(headings, parts[:len(headings)]))
@@ -155,7 +153,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     # Convert each group to a DataFrame
     group_dfs = {g: pd.DataFrame(rows) for g, rows in group_data.items()}
 
-    # AGS spelling differences and keys
+    # Normalization: common AGS spelling differences and keys
     for g, df in group_dfs.items():
         if df.empty:
             continue
@@ -172,7 +170,6 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
         group_dfs[g] = df
 
     return group_dfs
-
 
 def drop_singleton_rows(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -196,7 +193,6 @@ def deduplicate_cell(cell):
             unique_parts.append(p)
     return " | ".join(unique_parts)
 
-
 def expand_rows(df: pd.DataFrame) -> pd.DataFrame:
     """
     If any cell contains " | " concatenated values, expand into multiple rows.
@@ -210,12 +206,14 @@ def expand_rows(df: pd.DataFrame) -> pd.DataFrame:
             expanded_rows.append(new_row)
     return pd.DataFrame(expanded_rows)
 
-
 # --------------------------------------------------------------------------------------
 # Merge multi-file groups & show diagnostics
 # --------------------------------------------------------------------------------------
-
 def combine_groups(all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]]) -> Dict[str, pd.DataFrame]:
+    """
+    Combine groups across files. Adds SOURCE_FILE column.
+    Returns {group_name: combined_df}
+    """
     combined: Dict[str, List[pd.DataFrame]] = {}
     for fname, gdict in all_group_dfs:
         for gname, df in gdict.items():
@@ -227,7 +225,7 @@ def combine_groups(all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]]) -> 
     return {
         g: drop_singleton_rows(pd.concat(dfs, ignore_index=True))
         for g, dfs in combined.items() 
-        if dfs  
+        if dfs  # Only process if there are DataFrames to concatenate
     }
 
 # --------------------------------------------------------------------------------------
@@ -245,12 +243,12 @@ def coalesce_columns(df: pd.DataFrame, candidates: List[str], new_name: str):
     if new_name not in df.columns:
         df[new_name] = np.nan
 
-
 def to_numeric_safe(df: pd.DataFrame, cols: List[str]):
     for c in cols:
         if c in df.columns:
+            # Convert empty strings to NaN before numeric conversion
+            df[c] = df[c].replace(r'^\s*$', np.nan, regex=True)
             df[c] = pd.to_numeric(df[c], errors="coerce")
-
 
 def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
@@ -266,32 +264,6 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     treg = groups.get("TREG", pd.DataFrame()).copy()  # effective stress general
     trix = groups.get("TRIX", pd.DataFrame()).copy()  # AGS3 results
     tret = groups.get("TRET", pd.DataFrame()).copy()  # AGS4 results
-    
-   # For TRIG/TREG (test setup)
-    for df in [trig, treg]:
-        if not df.empty:
-            df['TEST_UID'] = df.apply(
-                lambda row: (
-                    f"{row['HOLE_ID']}_"
-                    f"{row['SPEC_DEPTH']}_"
-                    f"{row.get('TRIG_TYPE', row.get('TREG_TYPE', ''))}_"
-                    f"{uuid.uuid4().hex[:4]}"  # Last 4 chars of UUID
-                ),
-                axis=1
-            )
-    
-    # For TRIX/TRET (test results)
-    for df in [trix, tret]:
-        if not df.empty:
-            df['TEST_UID'] = df.apply(
-                lambda row: (
-                    f"{row['HOLE_ID']}_"
-                    f"{row['SPEC_DEPTH']}_"
-                    f"{row.get('TRIX_CELL', row.get('TRET_CELL', ''))}_"
-                    f"{uuid.uuid4().hex[:4]}"  # Last 4 chars of UUID
-                ),
-                axis=1
-            )
 
     # Normalize key columns for joins
     for df in [samp, clss, trig, treg, trix, tret]:
@@ -302,11 +274,34 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         # Normalize SPEC_DEPTH spelling
         rename_map = {c: "SPEC_DEPTH" for c in df.columns if c.upper() in {"SPEC_DPTH", "SPEC_DEPTH"}}
         df.rename(columns=rename_map, inplace=True)
-    
+
         # Ensure HOLE_ID is string
         if "HOLE_ID" in df.columns:
             df["HOLE_ID"] = df["HOLE_ID"].astype(str)
 
+    # ====== NEW: Add unique test identifiers ======
+    # Helper function to generate test UID
+    def generate_test_uid(row, group_type):
+        """Generate unique test ID with fallback to original keys"""
+        keys = [
+            str(row.get('HOLE_ID', '')),
+            str(row.get('SPEC_DEPTH', '')),
+            str(row.get('TRIG_TYPE', row.get('TREG_TYPE', row.get('TRIX_CELL', row.get('TRET_CELL', '')))))
+        ]
+        return f"{group_type}_{'_'.join(keys)}_{uuid.uuid4().hex[:4]}"
+
+    # For TRIG/TREG (test setup)
+    for i, df in enumerate([trig, treg]):
+        if not df.empty:
+            group_type = "TRIG" if i == 0 else "TREG"
+            df['TEST_UID'] = df.apply(lambda row: generate_test_uid(row, group_type), axis=1)
+
+    # For TRIX/TRET (test results)
+    for i, df in enumerate([trix, tret]):
+        if not df.empty:
+            group_type = "TRIX" if i == 0 else "TRET"
+            df['TEST_UID'] = df.apply(lambda row: generate_test_uid(row, group_type), axis=1)
+    # ====== END NEW ======
 
     # Merge keys
     merge_keys = ["HOLE_ID"]
@@ -319,18 +314,51 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     if not clss.empty:
         merged = pd.merge(merged, clss, on=merge_keys, how="outer", suffixes=("", "_CLSS"))
 
+    # ====== MODIFIED: Enhanced merging ======
     # add TRIG/TREG type info
     ty_cols = []
     if not trig.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TRIG_TYPE", "TEST_UID"] if c in trig.columns]
         trig_f = trig[keep].copy()
-        merged = pd.merge(merged, trig_f, on="TEST_UID", how="left")
+        
+        # Check if we can merge on TEST_UID
+        if 'TEST_UID' in merged.columns and 'TEST_UID' in trig_f.columns:
+            merged = pd.merge(merged, trig_f, on="TEST_UID", how="left")
+        else:
+            # Fallback to original keys
+            fallback_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH"] 
+                            if c in merged.columns and c in trig_f.columns]
+            if fallback_keys:
+                merged = pd.merge(merged, trig_f, on=fallback_keys, how="left")
+            else:
+                # If all else fails, just add the columns
+                for col in keep:
+                    if col not in merged.columns:
+                        merged[col] = trig_f[col] if col in trig_f.columns else None
+        
         ty_cols.append("TRIG_TYPE")
+    
     if not treg.empty:
-        keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TREG_TYPE"] if c in treg.columns]
+        keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TREG_TYPE", "TEST_UID"] if c in treg.columns]
         treg_f = treg[keep].copy()
-        merged = pd.merge(merged, treg_f, on=[c for c in keep if c in merge_keys], how="outer")
+        
+        # Check if we can merge on TEST_UID
+        if 'TEST_UID' in merged.columns and 'TEST_UID' in treg_f.columns:
+            merged = pd.merge(merged, treg_f, on="TEST_UID", how="left")
+        else:
+            # Fallback to original keys
+            fallback_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH"] 
+                            if c in merged.columns and c in treg_f.columns]
+            if fallback_keys:
+                merged = pd.merge(merged, treg_f, on=fallback_keys, how="left")
+            else:
+                # If all else fails, just add the columns
+                for col in keep:
+                    if col not in merged.columns:
+                        merged[col] = treg_f[col] if col in treg_f.columns else None
+        
         ty_cols.append("TREG_TYPE")
+    # ====== END MODIFIED ======
 
     # add TRIX/TRET result data (outer)
     tri_res = pd.DataFrame()
@@ -339,46 +367,63 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     if not tret.empty:
         tri_res = tri_res.append(tret.copy(), ignore_index=True) if not tri_res.empty else tret.copy()
 
-    #  -> unified names
+    # Coalesce expected result columns -> unified names
     if not tri_res.empty:
         coalesce_columns(tri_res, ["SPEC_DEPTH", "SPEC_DPTH"], "SPEC_DEPTH")
         coalesce_columns(tri_res, ["HOLE_ID", "LOCA_ID"], "HOLE_ID")
         coalesce_columns(tri_res, ["TRIX_CELL", "TRET_CELL"], "CELL")     # σ3 total cell pressure during shear
         coalesce_columns(tri_res, ["TRIX_DEVF", "TRET_DEVF"], "DEVF")     # deviator at failure (q)
         coalesce_columns(tri_res, ["TRIX_PWPF", "TRET_PWPF"], "PWPF")     # porewater u at failure
-        tri_keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "DEVF", "PWPF", "SOURCE_FILE"] if c in tri_res.columns]
+        tri_keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "DEVF", "PWPF", "SOURCE_FILE", "TEST_UID"] 
+                    if c in tri_res.columns]
         tri_res = tri_res[tri_keep].copy()
-        merged = pd.merge(merged, tri_res, on=[c for c in ["HOLE_ID", "SPEC_DEPTH"] if c in merged.columns], how="outer")
+        
+        # ====== MODIFIED: Enhanced merging ======
+        if 'TEST_UID' in merged.columns and 'TEST_UID' in tri_res.columns:
+            merged = pd.merge(merged, tri_res, on="TEST_UID", how="outer")
+        else:
+            # Fallback to original keys
+            fallback_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH"] 
+                            if c in merged.columns and c in tri_res.columns]
+            if fallback_keys:
+                merged = pd.merge(merged, tri_res, on=fallback_keys, how="outer")
+            else:
+                # If all else fails, just add the columns
+                for col in tri_keep:
+                    if col not in merged.columns:
+                        merged[col] = tri_res[col] if col in tri_res.columns else None
+        # ====== END MODIFIED ======
 
     # Final column subset (add useful identifiers if present)
     cols_pref = [
         "HOLE_ID", "SAMP_ID", "SAMP_REF", "SAMP_TOP",
         "SPEC_REF", "SPEC_DEPTH", "SAMP_DESC", "SPEC_DESC", "GEOL_STAT",
         "TRIG_TYPE", "TREG_TYPE",  # test types
-        "CELL", "DEVF", "PWPF", "SOURCE_FILE"
+        "CELL", "DEVF", "PWPF", "SOURCE_FILE", "TEST_UID"
     ]
     final_cols = [c for c in cols_pref if c in merged.columns]
     final_df = merged[final_cols].copy() if final_cols else merged.copy()
 
-    # Deduplicate cell text and expand rows 
-    
+    # Deduplicate cell text and expand rows if any " | "
     final_df = final_df.applymap(deduplicate_cell)
     expanded_df = expand_rows(final_df)
 
-    # Drop rows that are empty 
+    # Drop rows that are effectively empty (<=1 non-null)
     expanded_df = drop_singleton_rows(expanded_df)
 
+    # ====== NEW: Final deduplication ======
+    # Deduplicate based on test parameters
     key_cols = ['HOLE_ID', 'SPEC_DEPTH', 'CELL', 'DEVF', 'PWPF', 'TEST_TYPE']
     key_cols = [c for c in key_cols if c in expanded_df.columns]
     
     if key_cols:
         expanded_df = expanded_df.drop_duplicates(subset=key_cols, keep='first')
+    # ====== END NEW ======
 
     # Numeric cast for core fields
     to_numeric_safe(expanded_df, ["SPEC_DEPTH", "CELL", "DEVF", "PWPF"])
 
     return expanded_df
-
 
 def compute_s_t(tri_df: pd.DataFrame, mode: str = "Effective") -> pd.DataFrame:
     """
@@ -411,18 +456,22 @@ def compute_s_t(tri_df: pd.DataFrame, mode: str = "Effective") -> pd.DataFrame:
         df["s"] = df["s_total"]
 
     # Keep key columns for plotting
-    keep = ["HOLE_ID", "SPEC_DEPTH", "TEST_TYPE", "CELL", "PWPF", "DEVF", "s_total", "s_effective", "s", "t", "SOURCE_FILE"]
+    keep = ["HOLE_ID", "SPEC_DEPTH", "TEST_TYPE", "CELL", "PWPF", "DEVF", 
+            "s_total", "s_effective", "s", "t", "SOURCE_FILE"]
     keep = [c for c in keep if c in df.columns]
     return df[keep].copy()
 
 def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
+    """
+    Create an Excel workbook where each group is one sheet.
+    """
     buffer = io.BytesIO()
     used_names = set()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as xw:
         for gname, gdf in sorted(groups.items()):
-            if gdf.empty:
+            if gdf is None or gdf.empty:
                 continue
-            # Ensure unique sheet names
+            # Excel sheet name limit and avoid duplicates
             base_name = gname[:28]  # Allow 3 chars for suffix
             sheet_name = base_name
             i = 1
@@ -430,6 +479,7 @@ def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
                 sheet_name = f"{base_name}_{i}"
                 i += 1
             used_names.add(sheet_name)
+            # Clean rows (no singleton)
             out = drop_singleton_rows(gdf)
             out.to_excel(xw, index=False, sheet_name=sheet_name)
     return buffer.getvalue()
@@ -479,7 +529,7 @@ def add_st_charts_to_excel(writer: pd.ExcelWriter, st_df: pd.DataFrame, sheet_na
         # A1 notation ranges for x/y
         sheet = sheet_name
         # Excel is col letters; build ranges using XlsxWriter utility
-        
+        # We'll use row/col notation instead (zero-based, inclusive)
         chart.add_series({
             'name':       title,
             'categories': [sheet, r0, cx, r1, cx],  # x-values
@@ -493,8 +543,6 @@ def add_st_charts_to_excel(writer: pd.ExcelWriter, st_df: pd.DataFrame, sheet_na
     add_scatter("s′–t (Effective stress)", "s_effective", "t", "B2")
     # s–t (total)
     add_scatter("s–t (Total stress)",      "s_total",     "t", "B25")
-
-
 
 # --------------------------------------------------------------------------------------
 # Main app logic
@@ -569,12 +617,11 @@ if uploaded_files:
                 key=f"dl_{gname}",
             )
 
- 
-   # --- Triaxial summary & plots
+    # --- Triaxial summary & plots
     st.markdown("---")
     st.header(" Triaxial Summary & s–t Plots")
     tri_df = generate_triaxial_table(combined_groups)
-    
+
     if tri_df.empty:
         st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
     else:
@@ -582,15 +629,17 @@ if uploaded_files:
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
         st_df = compute_s_t(tri_df, mode=mode)
 
+        # (B) Merge s,t into the Triaxial summary grid (avoid accidental many-to-many merges)
+        # Prefer TEST_UID if available, fallback to standard keys
         merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", "TEST_UID"] 
                       if c in tri_df.columns and c in st_df.columns]
         
         # If TEST_UID isn't available, use standard keys without it
-        
         if 'TEST_UID' not in merge_keys:
             merge_keys = [c for c in merge_keys if c != 'TEST_UID']
         
-        cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE","TEST_UID"] 
+        cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF",
+                                    "s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE","TEST_UID"] 
                         if c in st_df.columns]
         
         tri_df_with_st = pd.merge(
@@ -603,33 +652,33 @@ if uploaded_files:
         
         # Clean up duplicate columns
         tri_df_with_st = tri_df_with_st.loc[:, ~tri_df_with_st.columns.duplicated()]
-    
+
         st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
         st.dataframe(tri_df_with_st, use_container_width=True, height=350)
 
-                # s–t computations & plot
+        # s–t computations & plot
         st.markdown("#### s–t computed values")
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
         st_df = compute_s_t(tri_df, mode=mode)
-        
-                # Download triaxial table (with s–t) + Excel Charts
+
+        # Download triaxial table (with s–t) + Excel Charts
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             # 1) Save the with-s,t summary (more useful than raw-only)
             tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
+
             # 2) Save the computed s–t values (contains s_total, s_effective, s, t)
             st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
+
             # 3) Add Excel charts (s′–t and s–t) on a 'Charts' sheet
             add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
 
-        
         st.download_button(
             "📥 Download Triaxial Summary + s–t (Excel, with charts)",
             data=buffer.getvalue(),
             file_name="triaxial_summary_s_t.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-
 
         # Filters
         c1, c2, c3 = st.columns(3)
@@ -652,13 +701,14 @@ if uploaded_files:
             fdf = fdf[fdf["SOURCE_FILE"].isin(pick_srcs)]
 
         # Plot
-        hover_cols = [c for c in ["HOLE_ID", "TEST_TYPE", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", "s_total", "s_effective", "SOURCE_FILE"] if c in fdf.columns]
+        hover_cols = [c for c in ["HOLE_ID", "TEST_TYPE", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", 
+                                  "s_total", "s_effective", "SOURCE_FILE"] if c in fdf.columns]
         fig = px.scatter(
             fdf,
             x="s",
             y="t",
             color=fdf[color_by] if color_by in fdf.columns else None,
-            facet_col=facet_col if facet_col in fdf.columns else None,
+            facet_col=facet_col,
             symbol="TEST_TYPE" if "TEST_TYPE" in fdf.columns else None,
             hover_data=hover_cols,
             title=f"s–t Plot ({mode} stress)",
@@ -673,4 +723,3 @@ if uploaded_files:
 
 else:
     st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")
-

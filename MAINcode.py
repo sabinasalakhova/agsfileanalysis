@@ -20,7 +20,7 @@ uploaded_files = st.file_uploader(
 )
 
 # --------------------------------------------------------------------------------------
-# Helpers: AGS detection & parsing (handles AGS3 and AGS4)
+# Helpers:
 # --------------------------------------------------------------------------------------
 def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
 
@@ -333,11 +333,12 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     final_cols = [c for c in cols_pref if c in merged.columns]
     final_df = merged[final_cols].copy() if final_cols else merged.copy()
 
-    # Deduplicate cell text and expand rows if any " | "
+    # Deduplicate cell text and expand rows 
+    
     final_df = final_df.applymap(deduplicate_cell)
     expanded_df = expand_rows(final_df)
 
-    # Drop rows that are effectively empty (<=1 non-null)
+    # Drop rows that are empty 
     expanded_df = drop_singleton_rows(expanded_df)
 
     # Numeric cast for core fields

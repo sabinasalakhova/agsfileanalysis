@@ -1,5 +1,6 @@
 import io
 import re
+import uuid
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -266,24 +267,30 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     trix = groups.get("TRIX", pd.DataFrame()).copy()  # AGS3 results
     tret = groups.get("TRET", pd.DataFrame()).copy()  # AGS4 results
     
-     # For TRIG/TREG (test setup)
+   # For TRIG/TREG (test setup)
     for df in [trig, treg]:
         if not df.empty:
-            # Generate unique ID: HOLE_ID + DEPTH + TEST_TYPE + random suffix
-            df['TEST_UID'] = (
-                df['HOLE_ID'].astype(str) + '_' + 
-                df['SPEC_DEPTH'].astype(str) + '_' + 
-                df.get('TRIG_TYPE', df.get('TREG_TYPE', '')).astype(str) + '_' +
-                pd.util.generate_random_string(4)
+            df['TEST_UID'] = df.apply(
+                lambda row: (
+                    f"{row['HOLE_ID']}_"
+                    f"{row['SPEC_DEPTH']}_"
+                    f"{row.get('TRIG_TYPE', row.get('TREG_TYPE', ''))}_"
+                    f"{uuid.uuid4().hex[:4]}"  # Last 4 chars of UUID
+                ),
+                axis=1
             )
+    
+    # For TRIX/TRET (test results)
     for df in [trix, tret]:
         if not df.empty:
-            # Generate unique ID: HOLE_ID + DEPTH + CELL PRESSURE + random suffix
-            df['TEST_UID'] = (
-                df['HOLE_ID'].astype(str) + '_' + 
-                df['SPEC_DEPTH'].astype(str) + '_' + 
-                df.get('TRIX_CELL', df.get('TRET_CELL', '')).astype(str) + '_' +
-                pd.util.generate_random_string(4)
+            df['TEST_UID'] = df.apply(
+                lambda row: (
+                    f"{row['HOLE_ID']}_"
+                    f"{row['SPEC_DEPTH']}_"
+                    f"{row.get('TRIX_CELL', row.get('TRET_CELL', ''))}_"
+                    f"{uuid.uuid4().hex[:4]}"  # Last 4 chars of UUID
+                ),
+                axis=1
             )
 
     # Normalize key columns for joins

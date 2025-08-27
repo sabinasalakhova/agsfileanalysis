@@ -213,11 +213,8 @@ def expand_rows(df: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------------------
 # Merge multi-file groups & show diagnostics
 # --------------------------------------------------------------------------------------
+
 def combine_groups(all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]]) -> Dict[str, pd.DataFrame]:
-    """
-    Combine groups across files. Adds SOURCE_FILE column.
-    Returns {group_name: combined_df}
-    """
     combined: Dict[str, List[pd.DataFrame]] = {}
     for fname, gdict in all_group_dfs:
         for gname, df in gdict.items():
@@ -226,8 +223,11 @@ def combine_groups(all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]]) -> 
             temp = df.copy()
             temp["SOURCE_FILE"] = fname
             combined.setdefault(gname, []).append(temp)
-    return {g: drop_singleton_rows(pd.concat(dfs, ignore_index=True)) for g, dfs in combined.items()}
-
+    return {
+        g: drop_singleton_rows(pd.concat(dfs, ignore_index=True))
+        for g, dfs in combined.items() 
+        if dfs  
+    }
 
 # --------------------------------------------------------------------------------------
 # Triaxial summary & s–t calculations
@@ -381,19 +381,21 @@ def compute_s_t(tri_df: pd.DataFrame, mode: str = "Effective") -> pd.DataFrame:
     keep = [c for c in keep if c in df.columns]
     return df[keep].copy()
 
-
 def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
-    """
-    Create an Excel workbook where each group is one sheet.
-    """
     buffer = io.BytesIO()
+    used_names = set()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as xw:
         for gname, gdf in sorted(groups.items()):
-            if gdf is None or gdf.empty:
+            if gdf.empty:
                 continue
-            # Excel sheet name limit and avoid duplicates
-            sheet_name = gname[:31]
-            # Clean rows (no singleton)
+            # Ensure unique sheet names
+            base_name = gname[:28]  # Allow 3 chars for suffix
+            sheet_name = base_name
+            i = 1
+            while sheet_name in used_names:
+                sheet_name = f"{base_name}_{i}"
+                i += 1
+            used_names.add(sheet_name)
             out = drop_singleton_rows(gdf)
             out.to_excel(xw, index=False, sheet_name=sheet_name)
     return buffer.getvalue()

@@ -145,7 +145,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
                                 group_data[current_group][-1][field] = (prev + " | " if prev else "") + val
             continue
 
-        # DATA row fallback (both styles) when descriptors are absent
+        # when descriptors are absent
         if current_group and headings:
             if len(parts) >= len(headings):
                 row = dict(zip(headings, parts[:len(headings)]))
@@ -154,7 +154,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     # Convert each group to a DataFrame
     group_dfs = {g: pd.DataFrame(rows) for g, rows in group_data.items()}
 
-    # Normalization: common AGS spelling differences and keys
+    # AGS spelling differences and keys
     for g, df in group_dfs.items():
         if df.empty:
             continue
@@ -312,7 +312,7 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     if not tret.empty:
         tri_res = tri_res.append(tret.copy(), ignore_index=True) if not tri_res.empty else tret.copy()
 
-    # Coalesce expected result columns -> unified names
+    #  -> unified names
     if not tri_res.empty:
         coalesce_columns(tri_res, ["SPEC_DEPTH", "SPEC_DPTH"], "SPEC_DEPTH")
         coalesce_columns(tri_res, ["HOLE_ID", "LOCA_ID"], "HOLE_ID")
@@ -446,7 +446,7 @@ def add_st_charts_to_excel(writer: pd.ExcelWriter, st_df: pd.DataFrame, sheet_na
         # A1 notation ranges for x/y
         sheet = sheet_name
         # Excel is col letters; build ranges using XlsxWriter utility
-        # We'll use row/col notation instead (zero-based, inclusive)
+        
         chart.add_series({
             'name':       title,
             'categories': [sheet, r0, cx, r1, cx],  # x-values

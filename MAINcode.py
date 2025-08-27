@@ -265,6 +265,26 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     treg = groups.get("TREG", pd.DataFrame()).copy()  # effective stress general
     trix = groups.get("TRIX", pd.DataFrame()).copy()  # AGS3 results
     tret = groups.get("TRET", pd.DataFrame()).copy()  # AGS4 results
+    
+     # For TRIG/TREG (test setup)
+    for df in [trig, treg]:
+        if not df.empty:
+            # Generate unique ID: HOLE_ID + DEPTH + TEST_TYPE + random suffix
+            df['TEST_UID'] = (
+                df['HOLE_ID'].astype(str) + '_' + 
+                df['SPEC_DEPTH'].astype(str) + '_' + 
+                df.get('TRIG_TYPE', df.get('TREG_TYPE', '')).astype(str) + '_' +
+                pd.util.generate_random_string(4)
+            )
+    for df in [trix, tret]:
+        if not df.empty:
+            # Generate unique ID: HOLE_ID + DEPTH + CELL PRESSURE + random suffix
+            df['TEST_UID'] = (
+                df['HOLE_ID'].astype(str) + '_' + 
+                df['SPEC_DEPTH'].astype(str) + '_' + 
+                df.get('TRIX_CELL', df.get('TRET_CELL', '')).astype(str) + '_' +
+                pd.util.generate_random_string(4)
+            )
 
     # Normalize key columns for joins
     for df in [samp, clss, trig, treg, trix, tret]:
@@ -295,9 +315,9 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     # add TRIG/TREG type info
     ty_cols = []
     if not trig.empty:
-        keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TRIG_TYPE"] if c in trig.columns]
+        keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TRIG_TYPE", "TEST_UID"] if c in trig.columns]
         trig_f = trig[keep].copy()
-        merged = pd.merge(merged, trig_f, on=[c for c in keep if c in merge_keys], how="outer")
+        merged = pd.merge(merged, trig_f, on="TEST_UID", how="left")
         ty_cols.append("TRIG_TYPE")
     if not treg.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TREG_TYPE"] if c in treg.columns]
@@ -340,6 +360,12 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
 
     # Drop rows that are empty 
     expanded_df = drop_singleton_rows(expanded_df)
+
+    key_cols = ['HOLE_ID', 'SPEC_DEPTH', 'CELL', 'DEVF', 'PWPF', 'TEST_TYPE']
+    key_cols = [c for c in key_cols if c in expanded_df.columns]
+    
+    if key_cols:
+        expanded_df = expanded_df.drop_duplicates(subset=key_cols, keep='first')
 
     # Numeric cast for core fields
     to_numeric_safe(expanded_df, ["SPEC_DEPTH", "CELL", "DEVF", "PWPF"])
@@ -548,11 +574,28 @@ if uploaded_files:
         # (A) s–t computations (do this BEFORE displaying the summary)
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
         st_df = compute_s_t(tri_df, mode=mode)
-    
-        # (B) Merge s,t into the Triaxial summary grid (avoid accidental many-to-many merges)
-        merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in tri_df.columns]
-        cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE"] if c in st_df.columns]
-        tri_df_with_st = pd.merge(tri_df, st_df[cols_from_st], on=merge_keys, how="left")
+
+        merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", "TEST_UID"] 
+                      if c in tri_df.columns and c in st_df.columns]
+        
+        # If TEST_UID isn't available, use standard keys without it
+        
+        if 'TEST_UID' not in merge_keys:
+            merge_keys = [c for c in merge_keys if c != 'TEST_UID']
+        
+        cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE","TEST_UID"] 
+                        if c in st_df.columns]
+        
+        tri_df_with_st = pd.merge(
+            tri_df, 
+            st_df[cols_from_st], 
+            on=merge_keys, 
+            how='left',
+            suffixes=('', '_y')
+        )
+        
+        # Clean up duplicate columns
+        tri_df_with_st = tri_df_with_st.loc[:, ~tri_df_with_st.columns.duplicated()]
     
         st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
         st.dataframe(tri_df_with_st, use_container_width=True, height=350)

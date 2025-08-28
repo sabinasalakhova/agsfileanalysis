@@ -6,15 +6,11 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-import openai
-from tenacity import retry, stop_after_attempt, wait_fixed
 # --------------------------------------------------------------------------------------
 # Page config & title
 # --------------------------------------------------------------------------------------
 st.set_page_config(page_title="Triaxial Lab Test AGS Processor", layout="wide")
 st.title("Triaxial Lab Test AGS File Processor (.ags ➜ Tables + Excel + s–t Graphs)")
-st.secrets["openai"]["api_key"]
-openai.api_key = "YOUR_OPENAI_API_KEY"
 
 # --------------------------------------------------------------------------------------
 # File upload (multi-file)
@@ -520,75 +516,6 @@ def remove_duplicate_tests(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-def generate_insights(st_df, tri_df):
-     # If either DataFrame is empty, return an error string.
-     if st_df.empty or tri_df.empty:
-         return "No data available for insights."
-
-     # Compute overall slope and intercept for the entire dataset (if at least 2 points)
-     if len(st_df) &gt;= 2:
-         s = st_df['s'].dropna()
-         t = st_df['t'].dropna()
-         if len(s) &gt;= 2 and len(t) &gt;= 2:
-             # Align the indices
-             common_idx = s.index.intersection(t.index)
-             s = s.loc[common_idx]
-             t = t.loc[common_idx]
-             slope, intercept = np.polyfit(s, t, 1)
-             friction_angle_rad = np.arctan(slope)
-             friction_angle_deg = np.degrees(friction_angle_rad)
-             cohesion = intercept
-         else:
-             slope, intercept, friction_angle_deg, cohesion = None, None, None, None
-     else:
-         slope, intercept, friction_angle_deg, cohesion = None, None, None, None
-
-     # Create a text summary
-     summary = f"""
-     There are {len(st_df)} triaxial tests from {len(st_df['HOLE_ID'].unique())} boreholes.
-     The depths range from {tri_df['SPEC_DEPTH'].min()} to {tri_df['SPEC_DEPTH'].max()} meters.
-     The cell pressures (σ3) range from {tri_df['CELL'].min()} to {tri_df['CELL'].max()} kPa.
-     The deviatoric stress at failure (q) ranges from {tri_df['DEVF'].min()} to {tri_df['DEVF'].max()} kPa.
-     The pore water pressure at failure ranges from {tri_df['PWPF'].min()} to {tri_df['PWPF'].max()} kPa.
-     """
-
-     if friction_angle_deg is not None:
-         summary += f"""
-     A linear regression on the entire set of (s, t) points gives:
-       - Slope (t/s) = {slope:.2f}
-       - Friction angle = {friction_angle_deg:.1f} degrees
-       - Cohesion (intercept) = {cohesion:.1f} kPa.
-         """
-
-     # Create the prompt
-     prompt = f"""
-     You are a geotechnical engineer. Below is a summary of triaxial test data:
-
-     {summary}
-
-     Based on this data, provide insights on:
-     - The soil type (clay, sand, etc.) and its behavior.
-     - The strength parameters (like cohesion and friction angle) if possible.
-     - Any anomalies or interesting patterns in the data.
-     - Recommendations for further testing or analysis.
-
-     Be concise and professional.
-     """
-
-     # Call OpenAI API
-     try:
-         response = openai.ChatCompletion.create(
-             model="gpt-3.5-turbo",
-             messages=[
-                 {"role": "system", "content": "You are a helpful geotechnical engineer."},
-                 {"role": "user", "content": prompt}
-             ],
-             api_key=st.secrets["openai"]["api_key"]
-         )
-         return response.choices[0].message['content']
-     except Exception as e:
-         return f"Error generating insights: {str(e)}"
-
 # --------------------------------------------------------------------------------------
 # Main app logic
 # --------------------------------------------------------------------------------------
@@ -689,14 +616,7 @@ if uploaded_files:
         st.markdown("#### s–t computed values")
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
         st_df = compute_s_t(tri_df, mode=mode)
-
-        st.markdown("---")
-        st.header("AI Insights")
         
-        if st.button("Generate Insights"):
-             insights = generate_insights(st_df, tri_df_with_st)
-             st.write(insights)
-                
                 # Download triaxial table (with s–t) + Excel Charts
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
@@ -756,24 +676,5 @@ if uploaded_files:
         fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
         st.plotly_chart(fig, use_container_width=True, theme="streamlit")
 
-                # --- AI Insights Section ---
-        st.markdown("---")
-        st.header("🧠 AI Geotechnical Insights")
-        
-        # Add a button to trigger AI analysis
-        if st.button("Generate Professional Analysis", key="ai_insights"):
-            with st.spinner("Analyzing soil behavior with AI..."):
-                insights = generate_geotechnical_insights(st_df)
-                
-                # Display insights in an expandable section
-                with st.expander("AI-Powered Geotechnical Analysis", expanded=True):
-                    st.markdown(insights)
-                    
-                    # Add disclaimer
-                    st.caption("""
-                    **Disclaimer**: These AI-generated insights are based on statistical analysis of your test data. 
-                    They should be reviewed by a qualified geotechnical engineer before use in design.
-                    """)
-        
 else:
     st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")

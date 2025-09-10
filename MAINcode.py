@@ -17,8 +17,19 @@ st.title("Triaxial Lab Test AGS File Processor (.ags ➜ Tables + Excel + s–t 
 # File upload (multi-file)
 # --------------------------------------------------------------------------------------
 uploaded_files = st.file_uploader(
-    "Upload one or more AGS files (AGS3/AGS4)", type=["ags", "txt", "csv", "dat", "ags4"], accept_multiple_files=True
+    "Upload one or more AGS files (AGS3/AGS4)",
+    type=["ags", "txt", "csv", "dat", "ags4"],
+    accept_multiple_files=True
 )
+st.markdown("---")
+st.subheader("GIU (lithology) table upload")
+giu_file = st.file_uploader(
+    "Upload GIU lithology table (CSV/XLSX/XLS) with columns: HOLE_ID/LOCA_ID, DEPTH_FROM, DEPTH_TO, LITH",
+    type=["csv", "xlsx", "xls"],
+    accept_multiple_files=False,
+    key="giu_uploader",
+)
+
 
 # --------------------------------------------------------------------------------------
 # Helpers: AGS detection & parsing (handles AGS3 and AGS4)

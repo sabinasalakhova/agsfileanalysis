@@ -953,5 +953,3 @@ else:
         "Upload one or more AGS files to begin. Optionally upload a GIU lithology table to annotate triaxial data with LITH."
     )
 
-else:
-    st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")

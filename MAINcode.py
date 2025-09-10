@@ -197,17 +197,38 @@ def deduplicate_cell(cell):
 
 
 def expand_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    If any cell contains " | " concatenated values, expand into multiple rows.
-    """
+    
+    ##Expand rows where any cell contains ' | ' separated values,
+    ##but skip expansion if all split values across columns are identical.
+    
     expanded_rows = []
+
     for _, row in df.iterrows():
-        split_values = {col: (str(row[col]).split(" | ") if pd.notna(row[col]) else [""]) for col in df.columns}
-        max_len = max(len(v) for v in split_values.values()) if split_values else 1
-        for i in range(max_len):
-            new_row = {col: (split_values[col][i] if i < len(split_values[col]) else "") for col in df.columns}
+        split_values = {
+            col: (str(row[col]).split(" | ") if pd.notna(row[col]) else [""])
+            for col in df.columns
+        }
+
+        # Check if all columns have the same repeated value
+        all_same = all(
+            len(set(values)) == 1 for values in split_values.values()
+        )
+
+        if all_same and all(len(values) > 1 for values in split_values.values()):
+            # If all values are the same and repeated, keep as single row
+            new_row = {col: split_values[col][0] for col in df.columns}
             expanded_rows.append(new_row)
-    return pd.DataFrame(expanded_rows)
+        else:
+            # Expand into multiple rows
+            max_len = max(len(v) for v in split_values.values()) if split_values else 1
+            for i in range(max_len):
+                new_row = {
+                    col: (split_values[col][i] if i < len(split_values[col]) else "")
+                    for col in df.columns
+                }
+                expanded_rows.append(new_row)
+
+    return pd.DataFrame(expanded_rows) 
 
 
 # --------------------------------------------------------------------------------------
@@ -457,8 +478,43 @@ def add_st_charts_to_excel(writer: pd.ExcelWriter, st_df: pd.DataFrame, sheet_na
     add_scatter("s′–t (Effective stress)", "s_effective", "t", "B2")
     # s–t (total)
     add_scatter("s–t (Total stress)",      "s_total",     "t", "B25")
-
-
+    
+def remove_duplicate_tests(df: pd.DataFrame) -> pd.DataFrame:
+ 
+    if df.empty:
+        return df
+    
+    # Define key columns that should be unique for each test
+    key_cols = [
+        'HOLE_ID', 'SPEC_DEPTH', 'CELL', 'DEVF', 'PWPF', 
+        'TEST_TYPE', 'SOURCE_FILE'
+    ]
+    
+    # Use only columns that actually exist in the DataFrame
+    available_cols = [col for col in key_cols if col in df.columns]
+    
+    # If we have at least 3 identifying columns, use them for deduplication
+    if len(available_cols) >= 3:
+        # Create a copy of the relevant columns
+        temp_df = df[available_cols].copy()
+        
+        # Convert float columns to rounded strings for consistent comparison
+        for col in temp_df.columns:
+            if pd.api.types.is_float_dtype(temp_df[col]):
+                # Round floats to 2 decimal places and convert to string
+                temp_df[col] = temp_df[col].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else "")
+            else:
+                # Convert non-float columns to string
+                temp_df[col] = temp_df[col].astype(str)
+        
+        # Create a combined string representation for each row
+        temp_df['combined'] = temp_df.apply(lambda row: '|'.join(row.values), axis=1)
+        
+        # Identify duplicates while keeping the first occurrence
+        mask = ~temp_df.duplicated(subset=['combined'], keep='first')
+        df = df[mask].reset_index(drop=True)
+    
+    return df
 
 # --------------------------------------------------------------------------------------
 # Main app logic
@@ -550,29 +606,27 @@ if uploaded_files:
         merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in tri_df.columns]
         cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE"] if c in st_df.columns]
         tri_df_with_st = pd.merge(tri_df, st_df[cols_from_st], on=merge_keys, how="left")
+        tri_df_with_st = remove_duplicate_tests(tri_df_with_st)
     
         st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
         st.dataframe(tri_df_with_st, use_container_width=True, height=350)
+    
 
-
-        # s–t computations & plot
+                # s–t computations & plot
         st.markdown("#### s–t computed values")
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
         st_df = compute_s_t(tri_df, mode=mode)
-        
-        
         
                 # Download triaxial table (with s–t) + Excel Charts
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             # 1) Save the with-s,t summary (more useful than raw-only)
             tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
-        
             # 2) Save the computed s–t values (contains s_total, s_effective, s, t)
             st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
-        
             # 3) Add Excel charts (s′–t and s–t) on a 'Charts' sheet
             add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
+
         
         st.download_button(
             "📥 Download Triaxial Summary + s–t (Excel, with charts)",
@@ -624,4 +678,3 @@ if uploaded_files:
 
 else:
     st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")
-

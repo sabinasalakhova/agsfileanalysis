@@ -414,6 +414,50 @@ def compute_s_t(tri_df: pd.DataFrame, mode: str = "Effective") -> pd.DataFrame:
     keep = [c for c in keep if c in df.columns]
     return df[keep].copy()
 
+# GIU (lithology) loading and mapping
+# --------------------------------------------------------------------------------------
+def load_giu_table(file) -> Optional[pd.DataFrame]:
+    try:
+        if file.name.lower().endswith(".csv"):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
+    except Exception as e:
+        st.error(f"Failed to read GIU file: {e}")
+        return None
+
+    # Strip spaces from column names
+    df.columns = [c.strip() for c in df.columns]
+
+    # Accept HOLE_ID or LOCA_ID
+    if "HOLE_ID" not in df.columns and "LOCA_ID" in df.columns:
+        df.rename(columns={"LOCA_ID": "HOLE_ID"}, inplace=True)
+
+    # Required columns — extra columns are fine
+    required = ["HOLE_ID", "DEPTH_FROM", "DEPTH_TO", "LITH"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        st.warning(
+            f"GIU table is missing required columns: {', '.join(missing)}. "
+            "Expected HOLE_ID (or LOCA_ID), DEPTH_FROM, DEPTH_TO, LITH."
+        )
+        return None
+
+    # Normalize types for matching
+    df["HOLE_ID"] = df["HOLE_ID"].astype(str)
+    for c in ["DEPTH_FROM", "DEPTH_TO"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # Drop rows without usable depth range
+    df = df.dropna(subset=["HOLE_ID", "DEPTH_FROM", "DEPTH_TO"]).reset_index(drop=True)
+
+    # Ensure DEPTH_FROM <= DEPTH_TO
+    swap = df["DEPTH_FROM"] > df["DEPTH_TO"]
+    if swap.any():
+        df.loc[swap, ["DEPTH_FROM", "DEPTH_TO"]] = df.loc[swap, ["DEPTH_TO", "DEPTH_FROM"]].values
+
+    return df
+
 
 def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
     """

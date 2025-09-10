@@ -458,6 +458,106 @@ def load_giu_table(file) -> Optional[pd.DataFrame]:
 
     return df
 
+# GIU (lithology) loading and mapping
+# --------------------------------------------------------------------------------------
+def load_giu_table(file) -> Optional[pd.DataFrame]:
+    try:
+        if file.name.lower().endswith(".csv"):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
+    except Exception as e:
+        st.error(f"Failed to read GIU file: {e}")
+        return None
+
+    # Strip spaces from column names
+    df.columns = [c.strip() for c in df.columns]
+
+    # Accept HOLE_ID or LOCA_ID
+    if "HOLE_ID" not in df.columns and "LOCA_ID" in df.columns:
+        df.rename(columns={"LOCA_ID": "HOLE_ID"}, inplace=True)
+
+    # Required columns — extra columns are fine
+    required = ["HOLE_ID", "DEPTH_FROM", "DEPTH_TO", "LITH"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        st.warning(
+            f"GIU table is missing required columns: {', '.join(missing)}. "
+            "Expected HOLE_ID (or LOCA_ID), DEPTH_FROM, DEPTH_TO, LITH."
+        )
+        return None
+
+    # Normalize types for matching
+    df["HOLE_ID"] = df["HOLE_ID"].astype(str)
+    for c in ["DEPTH_FROM", "DEPTH_TO"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # Drop rows without usable depth range
+    df = df.dropna(subset=["HOLE_ID", "DEPTH_FROM", "DEPTH_TO"]).reset_index(drop=True)
+
+    # Ensure DEPTH_FROM <= DEPTH_TO
+    swap = df["DEPTH_FROM"] > df["DEPTH_TO"]
+    if swap.any():
+        df.loc[swap, ["DEPTH_FROM", "DEPTH_TO"]] = df.loc[swap, ["DEPTH_TO", "DEPTH_FROM"]].values
+
+    return df
+
+
+def map_lithology(tri_df: pd.DataFrame, giu_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """
+    For each triaxial row (HOLE_ID, SPEC_DEPTH), assign LITH from GIU
+    where DEPTH_FROM <= SPEC_DEPTH <= DEPTH_TO for the same HOLE_ID.
+    If multiple intervals match, pick the tightest (smallest interval length).
+    If tie, pick the deepest DEPTH_FROM.
+    """
+    if giu_df is None or giu_df.empty or tri_df.empty:
+        tri_df["LITH"] = np.nan
+        return tri_df
+
+    out = tri_df.copy()
+    out["LITH"] = np.nan
+
+    # Ensure numeric depth
+    to_numeric_safe(out, ["SPEC_DEPTH"])
+
+    # Process per hole for efficiency
+    for hole, tgrp in out.groupby("HOLE_ID", dropna=False):
+        if pd.isna(hole):
+            continue
+        ggrp = giu_df[giu_df["HOLE_ID"] == str(hole)]
+        if ggrp.empty:
+            continue
+
+        # Build intervals
+        intervals = pd.IntervalIndex.from_arrays(
+            ggrp["DEPTH_FROM"].values,
+            ggrp["DEPTH_TO"].values,
+            closed="both",
+        )
+        depths = tgrp["SPEC_DEPTH"].values
+        matches: List[Optional[str]] = []
+        for d in depths:
+            if pd.isna(d):
+                matches.append(np.nan)
+                continue
+            mask = intervals.contains(d)
+            if not mask.any():
+                matches.append(np.nan)
+                continue
+            cand = ggrp.loc[mask, ["LITH", "DEPTH_FROM", "DEPTH_TO"]].copy()
+            cand["span"] = cand["DEPTH_TO"] - cand["DEPTH_FROM"]
+            min_span = cand["span"].min()
+            tightest = cand[cand["span"] == min_span]
+            if len(tightest) > 1:
+                i = tightest["DEPTH_FROM"].idxmax()
+            else:
+                i = tightest.index[0]
+            matches.append(cand.loc[i, "LITH"])
+        out.loc[tgrp.index, "LITH"] = matches
+
+    return out
+
+
 
 def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
     """
@@ -731,6 +831,127 @@ if uploaded_files:
 
         fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
         st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+        
+    # Load GIU and map LITH
+    giu_df = load_giu_table(giu_file) if giu_file is not None else None
+    if giu_file is None:
+        st.info("Optional: Upload a GIU lithology table to annotate triaxial data with LITH.")
+    elif giu_df is None:
+        st.warning("GIU table not usable. Proceeding without LITH mapping.")
+    else:
+        st.success(f"GIU table loaded: {len(giu_df)} intervals")
+
+    if tri_df.empty:
+        st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
+    else:
+        # Compute s–t
+        mode = "Effective" if stress_mode.startswith("Effective") else "Total"
+        st_df = compute_s_t(tri_df, mode=mode)
+
+        # Merge s,t back onto tri_df for a comprehensive view
+        merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in tri_df.columns]
+        cols_from_st = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", "s_total", "s_effective", "s", "t", "TEST_TYPE", "SOURCE_FILE"] if c in st_df.columns]
+        tri_df_with_st = pd.merge(tri_df, st_df[cols_from_st], on=merge_keys, how="left")
+
+        # Map LITH to both tables (summary and st_df) if GIU available
+        tri_df_with_st = map_lithology(tri_df_with_st, giu_df)
+        st_df = map_lithology(st_df, giu_df)
+
+        st.write(f"**Triaxial summary (with s, t, LITH)** — {len(tri_df_with_st)} rows")
+        st.dataframe(tri_df_with_st, use_container_width=True, height=350)
+
+        # s–t computed values section
+        st.markdown("#### s–t computed values")
+        st.dataframe(st_df, use_container_width=True, height=300)
+
+        # Download triaxial + s–t with charts (includes LITH if mapped)
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
+            st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
+            add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
+
+        st.download_button(
+            "📥 Download Triaxial Summary + s–t (Excel, with charts)",
+            data=buffer.getvalue(),
+            file_name="triaxial_summary_s_t.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+        # Filters
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            holes = sorted([h for h in st_df["HOLE_ID"].dropna().unique()]) if "HOLE_ID" in st_df.columns else []
+            pick_holes = st.multiselect("Filter HOLE_ID", holes, default=holes[: min(10, len(holes))])
+        with c2:
+            types = sorted([t for t in st_df["TEST_TYPE"].dropna().unique()]) if "TEST_TYPE" in st_df.columns else []
+            pick_types = st.multiselect("Filter TEST_TYPE", types, default=types)
+        with c3:
+            srcs = sorted([s for s in st_df["SOURCE_FILE"].dropna().unique()]) if "SOURCE_FILE" in st_df.columns else []
+            pick_srcs = st.multiselect("Filter by SOURCE_FILE", srcs, default=srcs)
+
+        fdf = st_df.copy()
+        if pick_holes and "HOLE_ID" in fdf.columns:
+            fdf = fdf[fdf["HOLE_ID"].isin(pick_holes)]
+        if pick_types and "TEST_TYPE" in fdf.columns:
+            fdf = fdf[fdf["TEST_TYPE"].isin(pick_types)]
+        if pick_srcs and "SOURCE_FILE" in fdf.columns:
+            fdf = fdf[fdf["SOURCE_FILE"].isin(pick_srcs)]
+
+        fig = px.scatter(
+            fdf,
+            x="s",
+            y="t",
+            color=color_by if color_by in fdf.columns else None,
+            facet_col=facet_col if (facet_col and facet_col in fdf.columns) else None,
+            symbol="TEST_TYPE" if "TEST_TYPE" in fdf.columns else None,
+            hover_data=[c for c in ["HOLE_ID", "TEST_TYPE", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", "s_total", "s_effective", "SOURCE_FILE", "LITH"] if c in fdf.columns],
+            title=f"s–t Plot ({mode} stress)",
+            labels={"s": "s (kPa)", "t": "t = q/2 (kPa)"},
+            template="simple_white",
+        )
+        if show_labels and "HOLE_ID" in fdf.columns:
+            fig.update_traces(text=fdf["HOLE_ID"], textposition="top center", mode="markers+text")
+
+        fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
+        st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+
+        # ----------------------
+        # Tabs by LITH
+        # ----------------------
+        if "LITH" in st_df.columns and not st_df["LITH"].dropna().empty:
+            st.markdown("---")
+            st.subheader("s–t plots by LITH")
+            lith_values = sorted([str(v) for v in st_df["LITH"].dropna().unique()])
+            lith_tabs = st.tabs(lith_values)
+            for tab, lith in zip(lith_tabs, lith_values):
+                with tab:
+                    lf = st_df[st_df["LITH"].astype(str) == lith].copy()
+                    st.write(f"**LITH = {lith}** — {len(lf)} rows")
+                    st.dataframe(lf, use_container_width=True, height=300)
+                    lfig = px.scatter(lf, x="s", y="t", color="HOLE_ID" if "HOLE_ID" in lf.columns else None,
+                                      symbol="TEST_TYPE" if "TEST_TYPE" in lf.columns else None, hover_data=[c for c in
+                                                                                                             ["HOLE_ID",
+                                                                                                              "TEST_TYPE",
+                                                                                                              "SPEC_DEPTH",
+                                                                                                              "CELL",
+                                                                                                              "PWPF",
+                                                                                                              "DEVF",
+                                                                                                              "s_total",
+                                                                                                              "s_effective",
+                                                                                                              "SOURCE_FILE"]
+                                                                                                             if
+                                                                                                             c in lf.columns],
+                                      title=f"s–t Plot ({mode}) — LITH: {lith}",
+                                      labels={"s": "s (kPa)", "t": "t = q/2 (kPa)"}, template="simple_white", )
+                    st.plotly_chart(lfig, use_container_width=True, theme="streamlit")
+        else:
+            st.info("No LITH values available to create LITH-based tabs. Upload a valid GIU table to enable this.")
+
+else:
+    st.info(
+        "Upload one or more AGS files to begin. Optionally upload a GIU lithology table to annotate triaxial data with LITH."
+    )
 
 else:
     st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")

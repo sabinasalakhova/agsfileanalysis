@@ -503,7 +503,7 @@ def load_giu_table(file) :
     return df
 
 
-def map_lithology(tri_df: pd.DataFrame, giu_df: Optional[pd.DataFrame]):
+def map_lithology(tri_df: pd.DataFrame, giu_df: [pd.DataFrame]):
     """
     For each triaxial row (HOLE_ID, SPEC_DEPTH), assign LITH from GIU
     where DEPTH_FROM <= SPEC_DEPTH <= DEPTH_TO for the same HOLE_ID.

@@ -783,13 +783,7 @@ if uploaded_files:
             # 3) Add Excel charts (s′–t and s–t) on a 'Charts' sheet
             add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
 
-        
-        st.download_button(
-            "📥 Download Triaxial Summary + s–t (Excel, with charts)",
-            data=buffer.getvalue(),
-            file_name="triaxial_summary_s_t.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+
 
 
         # Filters

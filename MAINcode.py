@@ -1,6 +1,6 @@
 import io
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple,Optional
 
 import numpy as np
 import pandas as pd
@@ -416,7 +416,7 @@ def compute_s_t(tri_df: pd.DataFrame, mode: str = "Effective") -> pd.DataFrame:
 
 # GIU (lithology) loading and mapping
 # --------------------------------------------------------------------------------------
-def load_giu_table(file):
+def load_giu_table(file) -> Optional[pd.DataFrame]:
     try:
         if file.name.lower().endswith(".csv"):
             df = pd.read_csv(file)
@@ -460,7 +460,7 @@ def load_giu_table(file):
 
 # GIU (lithology) loading and mapping
 # --------------------------------------------------------------------------------------
-def load_giu_table(file) :
+def load_giu_table(file) -> Optional[pd.DataFrame]:
     try:
         if file.name.lower().endswith(".csv"):
             df = pd.read_csv(file)
@@ -503,7 +503,7 @@ def load_giu_table(file) :
     return df
 
 
-def map_lithology(tri_df: pd.DataFrame, giu_df: [pd.DataFrame]):
+def map_lithology(tri_df: pd.DataFrame, giu_df: Optional[pd.DataFrame]) -> pd.DataFrame:
     """
     For each triaxial row (HOLE_ID, SPEC_DEPTH), assign LITH from GIU
     where DEPTH_FROM <= SPEC_DEPTH <= DEPTH_TO for the same HOLE_ID.
@@ -952,4 +952,3 @@ else:
     st.info(
         "Upload one or more AGS files to begin. Optionally upload a GIU lithology table to annotate triaxial data with LITH."
     )
-

@@ -872,25 +872,7 @@ if uploaded_files:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-        # Filters
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            holes = sorted([h for h in st_df["HOLE_ID"].dropna().unique()]) if "HOLE_ID" in st_df.columns else []
-            pick_holes = st.multiselect("Filter HOLE_ID", holes, default=holes[: min(10, len(holes))])
-        with c2:
-            types = sorted([t for t in st_df["TEST_TYPE"].dropna().unique()]) if "TEST_TYPE" in st_df.columns else []
-            pick_types = st.multiselect("Filter TEST_TYPE", types, default=types)
-        with c3:
-            srcs = sorted([s for s in st_df["SOURCE_FILE"].dropna().unique()]) if "SOURCE_FILE" in st_df.columns else []
-            pick_srcs = st.multiselect("Filter by SOURCE_FILE", srcs, default=srcs)
-
-        fdf = st_df.copy()
-        if pick_holes and "HOLE_ID" in fdf.columns:
-            fdf = fdf[fdf["HOLE_ID"].isin(pick_holes)]
-        if pick_types and "TEST_TYPE" in fdf.columns:
-            fdf = fdf[fdf["TEST_TYPE"].isin(pick_types)]
-        if pick_srcs and "SOURCE_FILE" in fdf.columns:
-            fdf = fdf[fdf["SOURCE_FILE"].isin(pick_srcs)]
+    
 
         fig = px.scatter(
             fdf,

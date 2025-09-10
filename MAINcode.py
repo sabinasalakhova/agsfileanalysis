@@ -416,7 +416,7 @@ def compute_s_t(tri_df: pd.DataFrame, mode: str = "Effective") -> pd.DataFrame:
 
 # GIU (lithology) loading and mapping
 # --------------------------------------------------------------------------------------
-def load_giu_table(file) -> Optional[pd.DataFrame]:
+def load_giu_table(file):
     try:
         if file.name.lower().endswith(".csv"):
             df = pd.read_csv(file)
@@ -460,7 +460,7 @@ def load_giu_table(file) -> Optional[pd.DataFrame]:
 
 # GIU (lithology) loading and mapping
 # --------------------------------------------------------------------------------------
-def load_giu_table(file) -> Optional[pd.DataFrame]:
+def load_giu_table(file) :
     try:
         if file.name.lower().endswith(".csv"):
             df = pd.read_csv(file)

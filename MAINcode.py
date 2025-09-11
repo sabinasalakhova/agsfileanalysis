@@ -196,8 +196,7 @@ if tri_df.empty:
 else:
     if giu_df is None:
         st.error("Please upload and clean the GIU table first.")
-        return
-
+        st.stop()
 
     # ─── 2) Normalize IDs & depths ─────────────────────────────────────
     tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()

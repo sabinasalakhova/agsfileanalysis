@@ -203,12 +203,12 @@ if uploaded_files:
         tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
     
     
-        giu["HOLE_ID"]     = (giu["HOLE_ID"]
+        giu_df["HOLE_ID"]     = (giu_df["HOLE_ID"]
                                 .astype(str)
                                 .str.upper()
                                 .str.strip())
-        giu["DEPTH_FROM"]  = pd.to_numeric(giu["DEPTH_FROM"], errors="coerce")
-        giu["DEPTH_TO"]    = pd.to_numeric(giu["DEPTH_TO"],   errors="coerce")
+        giu_df["DEPTH_FROM"]  = pd.to_numeric(giu_df["DEPTH_FROM"], errors="coerce")
+        giu_df["DEPTH_TO"]    = pd.to_numeric(giu_df["DEPTH_TO"],   errors="coerce")
     
         # ─── 3) Map lithology from GIU into tri_df ─────────────────────────
         def map_litho(row):

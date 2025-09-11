@@ -1,13 +1,13 @@
 from .cleaners import drop_singleton_rows, expand_rows, to_numeric_safe
 
 def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-      """
+    """
     Build a single triaxial summary table from available AGS groups:
     - SAMP / CLSS (optional)
     - TRIG (total stress general) or TREG (effective stress general)
     - TRIX (AGS3 results) or TRET (AGS4 results)
     """
-  # Get groups by priority
+    # Get groups by priority
     samp = groups.get("SAMP", pd.DataFrame()).copy()
     clss = groups.get("CLSS", pd.DataFrame()).copy()
     trig = groups.get("TRIG", pd.DataFrame()).copy()  # total stress general
@@ -24,22 +24,23 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         # Normalize SPEC_DEPTH spelling
         rename_map = {c: "SPEC_DEPTH" for c in df.columns if c.upper() in {"SPEC_DPTH", "SPEC_DEPTH"}}
         df.rename(columns=rename_map, inplace=True)
-    
+
         # Ensure HOLE_ID is string
         if "HOLE_ID" in df.columns:
             df["HOLE_ID"] = df["HOLE_ID"].astype(str)
- # Merge keys
+
+    # Merge keys
     merge_keys = ["HOLE_ID"]
     if not samp.empty and "SPEC_DEPTH" in samp.columns:
         merge_keys.append("SPEC_DEPTH")
 
     merged = samp.copy() if not samp.empty else pd.DataFrame(columns=merge_keys).copy()
 
-    # add CLSS (outer)
+    # Add CLSS (outer)
     if not clss.empty:
         merged = pd.merge(merged, clss, on=merge_keys, how="outer", suffixes=("", "_CLSS"))
 
-    # add TRIG/TREG type info
+    # Add TRIG/TREG type info
     ty_cols = []
     if not trig.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TRIG_TYPE"] if c in trig.columns]
@@ -52,7 +53,7 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         merged = pd.merge(merged, treg_f, on=[c for c in keep if c in merge_keys], how="outer")
         ty_cols.append("TREG_TYPE")
 
-    # add TRIX/TRET result data (outer)
+    # Add TRIX/TRET result data (outer)
     tri_res = pd.DataFrame()
     if not trix.empty:
         tri_res = trix.copy()

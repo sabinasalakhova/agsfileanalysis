@@ -157,36 +157,36 @@ if uploaded_files:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #giu file cleaning
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━            
-giu_df = None
-if giu_file is not None:
-    name = giu_file.name.lower()
-    if name.endswith(".csv"):
-        giu_df = pd.read_csv(giu_file)
-    else:
-        giu_df = pd.read_excel(giu_file)
-
-    # NOW giu_df is a DataFrame. Clean it:
-    giu_df = normalize_columns(giu_df)
-
-    if "LOCA_ID" in giu_df.columns and "HOLE_ID" not in giu_df.columns:
-        giu_df = giu_df.rename(columns={"LOCA_ID": "HOLE_ID"})
-
-    giu_df = drop_singleton_rows(giu_df)
-    giu_df = expand_rows(giu_df)
-    giu_df = giu_df.applymap(deduplicate_cell)
-    coalesce_columns(giu_df, ["DEPTH_FROM","START_DEPTH"], "DEPTH_FROM")
-    coalesce_columns(giu_df, ["DEPTH_TO","END_DEPTH"],     "DEPTH_TO")
-    to_numeric_safe(giu_df, ["DEPTH_FROM","DEPTH_TO"])
+    giu_df = None
+    if giu_file is not None:
+        name = giu_file.name.lower()
+        if name.endswith(".csv"):
+            giu_df = pd.read_csv(giu_file)
+        else:
+            giu_df = pd.read_excel(giu_file)
     
-    st.write("Cleaned GIU intervals:")
-    st.dataframe(giu_df, use_container_width=True)
+        # NOW giu_df is a DataFrame. Clean it:
+        giu_df = normalize_columns(giu_df)
+    
+        if "LOCA_ID" in giu_df.columns and "HOLE_ID" not in giu_df.columns:
+            giu_df = giu_df.rename(columns={"LOCA_ID": "HOLE_ID"})
+    
+        giu_df = drop_singleton_rows(giu_df)
+        giu_df = expand_rows(giu_df)
+        giu_df = giu_df.applymap(deduplicate_cell)
+        coalesce_columns(giu_df, ["DEPTH_FROM","START_DEPTH"], "DEPTH_FROM")
+        coalesce_columns(giu_df, ["DEPTH_TO","END_DEPTH"],     "DEPTH_TO")
+        to_numeric_safe(giu_df, ["DEPTH_FROM","DEPTH_TO"])
+        
+        st.write("Cleaned GIU intervals:")
+        st.dataframe(giu_df, use_container_width=True)
 
 
  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    # --- Triaxial summary & plots
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-st.markdown("---")
-st.header("Triaxial Summary & s–t Plots")
+    st.markdown("---")
+    st.header("Triaxial Summary & s–t Plots")
 
     # 1) Build raw triaxial summary
     tri_df = generate_triaxial_table(combined_groups)

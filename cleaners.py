@@ -3,6 +3,10 @@ import pandas as pd
 import numpy as np
 from typing import List, Tuple, Dict
 
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df.columns = [col.upper().strip() for col in df.columns]
+    return df
+
 
 def drop_singleton_rows(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:

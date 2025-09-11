@@ -1,27 +1,23 @@
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Imports
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import io
-import re
-from typing import Dict, List, Tuple, Optional
 
-import numpy as np
+
 import pandas as pd
 import streamlit as st
-from scipy.stats import linregress
+from typing import List, Tuple, Dict
+import io
+
 
 # External modules
 from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file
-from .cleaners import (
-    deduplicate_cell, drop_singleton_rows, expand_rows,
-    combine_groups, coalesce_columns, to_numeric_safe
-)
-from .triaxial import (
-    generate_triaxial_table, generate_triaxial_with_lithology,
-    calculate_s_t_values, remove_duplicate_tests
-)
-from .excel_util import build_triaxial_excel, add_st_charts_to_excel
-from .charts import estimate_strength_params  # optional if you split it
+from cleaners import deduplicate_cell, drop_singleton_rows, expand_rows, combine_groups, coalesce_columns, to_numeric_safe, normalize_columns
+from triaxial import generate_triaxial_table, generate_triaxial_with_lithology, calculate_s_t_values, remove_duplicate_tests
+
+from excel_util import  add_st_charts_to_excel, build_all_groups_excel, remove_duplicate_tests
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Page Setup
@@ -54,74 +50,128 @@ giu_file = st.file_uploader(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Step 3: Process and Display Results
+# Step 3: Clean and Parse AGS Files
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def process_uploaded_ags_files(uploaded_files) -> Dict[str, pd.DataFrame]:
+    """Full cleaning and parsing pipeline for uploaded AGS files."""
+    all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]] = []
+
+    for f in uploaded_files:
+        file_bytes = f.getvalue()
+        _ = analyze_ags_content(file_bytes)
+        gdict = parse_ags_file(file_bytes)
+
+        for gname, df in gdict.items():
+            if df is None or df.empty:
+                continue
+
+            df = normalize_columns(df)
+            df = drop_singleton_rows(df)
+            df = expand_rows(df)
+            df = df.applymap(deduplicate_cell)
+            coalesce_columns(df, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
+            coalesce_columns(df, ["DEPTH_TO", "END_DEPTH"], "DEPTH_TO")
+            to_numeric_safe(df, ["DEPTH_FROM", "DEPTH_TO"])
+            df["SOURCE_FILE"] = f.name
+
+        all_group_dfs.append((f.name, gdict))
+
+    return combine_groups(all_group_dfs)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Step 4: Run App Logic
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+combined_groups = {}
+tri_df = pd.DataFrame()
+
 if uploaded_files:
-    st.success(f"✅ {len(uploaded_files)} AGS file(s) uploaded successfully.")
-    parsed_groups = {}
-    for file in uploaded_files:
-        content = file.read().decode("utf-8", errors="ignore")
-        parsed = parse_ags_file(content)
-        parsed_groups.update(parsed)
+    combined_groups = process_uploaded_ags_files(uploaded_files)
 
-    # Add GIU if uploaded
-    if giu_file:
-        giu_df = pd.read_csv(giu_file) if giu_file.name.endswith(".csv") else pd.read_excel(giu_file)
-        parsed_groups["GIU"] = giu_df
+    # Diagnostics
+    diagnostics = []
+    for f in uploaded_files:
+        file_bytes = f.getvalue()
+        flags = analyze_ags_content(file_bytes)
+        diagnostics.append((f.name, flags))
 
-    # Build triaxial summary
-    triaxial_df = generate_triaxial_with_lithology(parsed_groups)
-    triaxial_df = calculate_s_t_values(triaxial_df)
-    triaxial_df = remove_duplicate_tests(triaxial_df)
+    with st.expander("File diagnostics (AGS type & key groups)", expanded=False):
+        diag_df = pd.DataFrame([{"File": n, **flags} for (n, flags) in diagnostics])
+        st.dataframe(diag_df, use_container_width=True)
 
-    # Display metrics
-    phi, cohesion = estimate_strength_params(triaxial_df)
-    st.metric("Friction Angle (φ′)", f"{phi}°")
-    st.metric("Cohesion (c′)", f"{cohesion} kPa")
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Sidebar: Downloads
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    with st.sidebar:
+        st.header("Downloads & Plot Options")
+        if combined_groups:
+            all_xl = build_all_groups_excel(combined_groups)
+            st.download_button(
+                "📥 Download ALL groups (one Excel workbook)",
+                data=all_xl,
+                file_name="ags_groups_combined.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Each AGS group is a separate sheet; all uploaded files are merged."
+            )
 
-    # Show table
-    st.dataframe(triaxial_df)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # AGS Group Display
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    st.subheader("📋 AGS Groups (merged across all uploaded files)")
+    tabs = st.tabs(sorted(combined_groups.keys()))
+    for tab, gname in zip(tabs, sorted(combined_groups.keys())):
+        with tab:
+            gdf = combined_groups[gname]
+            st.write(f"**{gname}** — {len(gdf)} rows")
+            st.dataframe(gdf, use_container_width=True, height=350)
 
-    # Download button
-    excel_bytes = build_triaxial_excel(parsed_groups)
-    st.download_button(
-        label="📥 Download Triaxial Excel Report",
-        data=excel_bytes,
-        file_name="triaxial_report.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-else:
-    st.warning("⚠️ No AGS files uploaded yet.")
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+                drop_singleton_rows(gdf).to_excel(writer, index=False, sheet_name=gname[:31])
+            st.download_button(
+                label=f"Download {gname} (Excel)",
+                data=buffer.getvalue(),
+                file_name=f"{gname}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"dl_{gname}",
+            )
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Step 4: Plot s-t with Best-Fit Line
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Triaxial Summary & s–t Analysis
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    st.markdown("---")
+    st.header("Triaxial Summary & s–t Plots")
 
-st.markdown("---")
-st.header("s-t Plot with Strength Parameters")
+    tri_df = generate_triaxial_table(combined_groups)
 
-if not triaxial_df.empty and "s" in triaxial_df.columns and "t" in triaxial_df.columns:
-    df_plot = triaxial_df.dropna(subset=["s", "t"]).copy()
+    if tri_df.empty:
+        st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
+    else:
+        mode = "Effective" if stress_mode.startswith("Effective") else "Total"
+        st_df = calculate_s_t_values(tri_df, mode=mode)
 
-    # Estimate strength parameters
-    phi, cohesion = estimate_strength_params(df_plot)
+        merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in tri_df.columns]
+        cols_from_st = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", "s_total", "s_effective", "s", "t", "TEST_TYPE", "SOURCE_FILE"] if c in st_df.columns]
 
-    # Fit line
-    slope, intercept, _, _, _ = linregress(df_plot["s"], df_plot["t"])
-    df_plot["t_fit"] = df_plot["s"] * slope + intercept
+        tri_df_with_st = pd.merge(tri_df, st_df[cols_from_st], on=merge_keys, how="left")
+        tri_df_with_st = remove_duplicate_tests(tri_df_with_st)
 
-    # Plot
-    fig = px.scatter(
-        df_plot,
-        x="s",
-        y="t",
-        color="LITHOLOGY",
-        hover_data=["HOLE_ID", "SPEC_DEPTH"],
-        title=f"t–s Plot (φ′ ≈ {phi}°, c′ ≈ {cohesion} kPa)"
-    )
-    fig.add_scatter(x=df_plot["s"], y=df_plot["t_fit"], mode="lines", name="Best-Fit Line")
+        st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
+        st.dataframe(tri_df_with_st, use_container_width=True, height=350)
 
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("ℹ️ No valid s–t data available for plotting.")
+        st.markdown("#### s–t computed values")
+        st_df = compute_s_t(tri_df, mode=mode)
 
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
+            st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
+            add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
+
+        st.download_button(
+            "📥 Download Triaxial Summary + s–t (Excel, with charts)",
+            data=buffer.getvalue(),
+            file_name="triaxial_summary_s_t.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )

@@ -9,3 +9,4 @@ dependencies:
   - streamlit
   - xlsxwriter
   - openpyxl
+  - scipy

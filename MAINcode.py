@@ -50,7 +50,7 @@ giu_file = st.file_uploader(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#Step 3: clean up
+#Step 3: clean up function
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def process_uploaded_ags_files(uploaded_files) -> Dict[str, pd.DataFrame]:
     """
@@ -113,7 +113,9 @@ if uploaded_files:
         file_bytes = f.getvalue()
         flags = analyze_ags_content(file_bytes)
         diagnostics.append((f.name, flags))
-
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#version check result
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     with st.expander("File diagnostics (AGS type & key groups)", expanded=False):
         diag_df = pd.DataFrame([{"File": n, **flags} for (n, flags) in diagnostics])
         st.dataframe(diag_df, use_container_width=True)
@@ -121,7 +123,9 @@ if uploaded_files:
     # Sidebar: downloads and plotting options
     with st.sidebar:
         st.header("Downloads & Plot Options")
-
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ags groups combined per tab, button on the left
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         if combined_groups:
             all_xl = build_all_groups_excel(combined_groups)
             st.download_button(
@@ -156,9 +160,13 @@ if uploaded_files:
             )
 
  
-   # --- Triaxial summary & plots
+
     st.markdown("---")
     st.header(" Triaxial Summary & s–t Plots")
+    combined_groups = process_uploaded_ags_files(uploaded_files)
+    combined_groups = _split_quoted_csv (uploaded_files)
+    combined_groups = parse_ags_file(uploaded_files)
+
     tri_df = generate_triaxial_table(combined_groups)
     
     if tri_df.empty:

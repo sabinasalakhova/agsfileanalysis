@@ -184,7 +184,7 @@ if uploaded_files:
                 # s–t computations & plot
         st.markdown("#### s–t computed values")
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
-        st_df = calculate_s_t_values(tri_df, mode=mode)
+        st_df = calculate_s_t_values(tri_df)
         
                 # Download triaxial table (with s–t) + Excel Charts
         buffer = io.BytesIO()

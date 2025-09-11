@@ -12,16 +12,16 @@ from scipy.stats import linregress
 
 # External modules
 from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file
-from .cleaners import (
+from cleaners import (
     deduplicate_cell, drop_singleton_rows, expand_rows,
     combine_groups, coalesce_columns, to_numeric_safe
 )
-from .triaxial import (
+from triaxial import (
     generate_triaxial_table, generate_triaxial_with_lithology,
     calculate_s_t_values, remove_duplicate_tests
 )
-from .excel_util import build_triaxial_excel, add_st_charts_to_excel
-from .charts import estimate_strength_params  # optional if you split it
+from excel_util import build_triaxial_excel, add_st_charts_to_excel
+from charts import estimate_strength_params  # optional if you split it
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Page Setup

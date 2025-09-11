@@ -81,7 +81,7 @@ def add_st_charts_to_excel(writer: pd.ExcelWriter, st_df: pd.DataFrame, sheet_na
     # s–t (total)
     add_scatter("s–t (Total stress)",      "s_total",     "t", "B25")
     
-  def remove_duplicate_tests(df: pd.DataFrame) -> pd.DataFrame:
+def remove_duplicate_tests(df: pd.DataFrame) -> pd.DataFrame:
  
     if df.empty:
         return df

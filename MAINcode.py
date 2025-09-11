@@ -11,7 +11,7 @@ import streamlit as st
 from scipy.stats import linregress
 
 # External modules
-from .agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file
+from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file
 from .cleaners import (
     deduplicate_cell, drop_singleton_rows, expand_rows,
     combine_groups, coalesce_columns, to_numeric_safe

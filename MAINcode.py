@@ -207,7 +207,28 @@ if uploaded_files:
             how="left"
         )
         tri_df_with_st = remove_duplicate_tests(tri_df_with_st)
-
+        # Normalize first
+        tri_df_with_st["HOLE_ID"]    = tri_df_with_st["HOLE_ID"].astype(str).str.upper().str.strip()
+        tri_df_with_st["SPEC_DEPTH"] = pd.to_numeric(tri_df_with_st["SPEC_DEPTH"], errors="coerce")
+        
+        # Define the same mapper, pointing at `giu`
+        def map_litho_after(row):
+            hole  = row["HOLE_ID"]
+            depth = row["SPEC_DEPTH"]
+            if not hole or pd.isna(depth):
+                return None
+        
+            mask = (
+                giu["HOLE_ID"].str.endswith(hole)
+                & (giu["DEPTH_FROM"] <= depth)
+                & (giu["DEPTH_TO"]   >= depth)
+            )
+            sub = giu.loc[mask]
+            return sub.iloc[0]["LITH"] if not sub.empty else None
+        
+        # Apply to the merged table
+        tri_df_with_st["LITH"] = tri_df_with_st.apply(map_litho_after, axis=1)
+        st.write(f"🔍 mapped lithology for {tri_df_with_st['LITH'].notna().sum()} records")
         st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
         st.dataframe(tri_df_with_st, use_container_width=True, height=350)
     

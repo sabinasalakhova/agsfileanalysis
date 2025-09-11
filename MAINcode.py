@@ -154,6 +154,33 @@ if uploaded_files:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key=f"dl_{gname}",
             )
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#giu file cleaning
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━            
+giu_df = None
+if giu_file is not None:
+    name = giu_file.name.lower()
+    if name.endswith(".csv"):
+        giu_df = pd.read_csv(giu_file)
+    else:
+        giu_df = pd.read_excel(giu_file)
+
+    # NOW giu_df is a DataFrame. Clean it:
+    giu_df = normalize_columns(giu_df)
+
+    if "LOCA_ID" in giu_df.columns and "HOLE_ID" not in giu_df.columns:
+        giu_df = giu_df.rename(columns={"LOCA_ID": "HOLE_ID"})
+
+    giu_df = drop_singleton_rows(giu_df)
+    giu_df = expand_rows(giu_df)
+    giu_df = giu_df.applymap(deduplicate_cell)
+    coalesce_columns(giu_df, ["DEPTH_FROM","START_DEPTH"], "DEPTH_FROM")
+    coalesce_columns(giu_df, ["DEPTH_TO","END_DEPTH"],     "DEPTH_TO")
+    to_numeric_safe(giu_df, ["DEPTH_FROM","DEPTH_TO"])
+    
+    st.write("Cleaned GIU intervals:")
+    st.dataframe(giu_df, use_container_width=True)
+
 
  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    # --- Triaxial summary & plots
@@ -167,12 +194,15 @@ tri_df = generate_triaxial_table(combined_groups)
 if tri_df.empty:
     st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
 else:
+    if giu_df is None:
+        st.error("Please upload and clean the GIU table first.")
+        return
+
+
     # ─── 2) Normalize IDs & depths ─────────────────────────────────────
-    tri_df["HOLE_ID"]    = (tri_df["HOLE_ID"]
-                            .astype(str)
-                            .str.upper()
-                            .str.strip())
+    tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()
     tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
+
 
     giu["HOLE_ID"]     = (giu["HOLE_ID"]
                             .astype(str)
@@ -183,21 +213,20 @@ else:
 
     # ─── 3) Map lithology from GIU into tri_df ─────────────────────────
     def map_litho(row):
-        h, d = row["HOLE_ID"], row["SPEC_DEPTH"]
-        if pd.isna(h) or pd.isna(d):
-            return None
-
-        mask = (
-            giu["HOLE_ID"].str.endswith(h) &
-            (giu["DEPTH_FROM"] <= d)   &
-            (giu["DEPTH_TO"]   >= d)
-        )
-        m = giu.loc[mask]
-        return m["LITH"].iloc[0] if not m.empty else None
+            hole, depth = row["HOLE_ID"], row["SPEC_DEPTH"]
+            if pd.isna(hole) or pd.isna(depth):
+                return None
+    
+            mask = (
+                giu_df["HOLE_ID"].str.upper().str.strip().str.endswith(hole)
+                & (giu_df["DEPTH_FROM"] <= depth)
+                & (giu_df["DEPTH_TO"]   >= depth)
+            )
+            sub = giu_df.loc[mask]
+            return sub.iloc[0]["LITH"] if not sub.empty else None
 
     tri_df["LITH"] = tri_df.apply(map_litho, axis=1)
-    assigned = tri_df["LITH"].notna().sum()
-    st.write(f"🔍 Mapped lithology for {assigned} of {len(tri_df)} records")
+    st.write(f"🔍 Mapped LITH for {tri_df['LITH'].notna().sum()} / {len(tri_df)} records")
 
     # ─── 4) Compute s & t ───────────────────────────────────────────────
     mode  = "Effective" if stress_mode.startswith("Effective") else "Total"

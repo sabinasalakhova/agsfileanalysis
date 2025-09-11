@@ -205,13 +205,7 @@ if uploaded_files:
         )
 
         fdf = st_df.copy()
-        if pick_holes:
-            fdf = fdf[fdf["HOLE_ID"].isin(pick_holes)]
-        if pick_types:
-            fdf = fdf[fdf["TEST_TYPE"].isin(pick_types)]
-        if pick_srcs and "SOURCE_FILE" in fdf.columns:
-            fdf = fdf[fdf["SOURCE_FILE"].isin(pick_srcs)]
-
+        
         # Plot
         hover_cols = [c for c in ["HOLE_ID", "TEST_TYPE", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", "s_total", "s_effective", "SOURCE_FILE"] if c in fdf.columns]
         fig = px.scatter(

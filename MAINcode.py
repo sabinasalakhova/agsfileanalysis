@@ -83,8 +83,6 @@ def process_uploaded_ags_files(uploaded_files) -> Dict[str, pd.DataFrame]:
 # Step 4: Run App Logic
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
- Main app logic
-# --------------------------------------------------------------------------------------
 if uploaded_files:
     # Parse all uploaded files
     all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]] = []

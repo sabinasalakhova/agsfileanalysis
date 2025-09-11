@@ -50,19 +50,15 @@ giu_file = st.file_uploader(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#Step 3: clean up and parse
+# Step 3: Clean and Parse AGS Files
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 def process_uploaded_ags_files(uploaded_files) -> Dict[str, pd.DataFrame]:
-    """
-    Full cleaning and parsing pipeline for uploaded AGS files.
-    Returns a combined dictionary of cleaned AGS groups.
-    """
+    """Full cleaning and parsing pipeline for uploaded AGS files."""
     all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]] = []
 
     for f in uploaded_files:
         file_bytes = f.getvalue()
-
-        # Analyze and parse
         _ = analyze_ags_content(file_bytes)
         gdict = parse_ags_file(file_bytes)
 
@@ -70,41 +66,27 @@ def process_uploaded_ags_files(uploaded_files) -> Dict[str, pd.DataFrame]:
             if df is None or df.empty:
                 continue
 
-            # Normalize column names
             df = normalize_columns(df)
-
-            # Drop singleton rows
             df = drop_singleton_rows(df)
-
-            # Expand multi-value rows
             df = expand_rows(df)
-
-            # Deduplicate cells
-            for col in df.columns:
-                df[col] = df[col].apply(deduplicate_cell)
-
-            # Coalesce common depth columns
+            df = df.applymap(deduplicate_cell)
             coalesce_columns(df, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
             coalesce_columns(df, ["DEPTH_TO", "END_DEPTH"], "DEPTH_TO")
-
-            # Convert depth columns to numeric
             to_numeric_safe(df, ["DEPTH_FROM", "DEPTH_TO"])
-
-            # Tag source file
             df["SOURCE_FILE"] = f.name
 
         all_group_dfs.append((f.name, gdict))
 
-    # Combine all cleaned groups
     return combine_groups(all_group_dfs)
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Step 4: Run App Logic
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Step 4: Parse and Clean
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+combined_groups = {}
+tri_df = pd.DataFrame()
 
 if uploaded_files:
-    # Parse and clean all uploaded files
     combined_groups = process_uploaded_ags_files(uploaded_files)
 
     # Diagnostics
@@ -113,98 +95,83 @@ if uploaded_files:
         file_bytes = f.getvalue()
         flags = analyze_ags_content(file_bytes)
         diagnostics.append((f.name, flags))
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#version check result
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
     with st.expander("File diagnostics (AGS type & key groups)", expanded=False):
         diag_df = pd.DataFrame([{"File": n, **flags} for (n, flags) in diagnostics])
         st.dataframe(diag_df, use_container_width=True)
 
-    # Sidebar: downloads and plotting options
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Sidebar: Downloads
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     with st.sidebar:
         st.header("Downloads & Plot Options")
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ags groups combined per tab, button on the left
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            if combined_groups:
-            # Sidebar: download all groups as Excel
-                all_xl = build_all_groups_excel(combined_groups)
-                with st.sidebar:
-                    st.header("Downloads & Plot Options")
-                    st.download_button(
-                        "📥 Download ALL groups (one Excel workbook)",
-                        data=all_xl,
-                        file_name="ags_groups_combined.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        help="Each AGS group is a separate sheet; all uploaded files are merged."
-                    )
-        
-            # Show group tables with per-group Excel download
-            st.subheader("📋 AGS Groups (merged across all uploaded files)")
-            tabs = st.tabs(sorted(combined_groups.keys()))
-            for tab, gname in zip(tabs, sorted(combined_groups.keys())):
-                with tab:
-                    gdf = combined_groups[gname]
-                    st.write(f"**{gname}** — {len(gdf)} rows")
-                    st.dataframe(gdf, use_container_width=True, height=350)
-        
-                    # Per-group download (Excel)
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-                        drop_singleton_rows(gdf).to_excel(writer, index=False, sheet_name=gname[:31])
-                    st.download_button(
-                        label=f"Download {gname} (Excel)",
-                        data=buffer.getvalue(),
-                        file_name=f"{gname}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key=f"dl_{gname}",
-                    )
-        
-            # Triaxial summary and plots
-            st.markdown("---")
-            st.header("Triaxial Summary & s–t Plots")
-        
-            tri_df = generate_triaxial_table(combined_groups)
-   
+        if combined_groups:
+            all_xl = build_all_groups_excel(combined_groups)
+            st.download_button(
+                "📥 Download ALL groups (one Excel workbook)",
+                data=all_xl,
+                file_name="ags_groups_combined.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Each AGS group is a separate sheet; all uploaded files are merged."
+            )
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # AGS Group Display
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    st.subheader("📋 AGS Groups (merged across all uploaded files)")
+    tabs = st.tabs(sorted(combined_groups.keys()))
+    for tab, gname in zip(tabs, sorted(combined_groups.keys())):
+        with tab:
+            gdf = combined_groups[gname]
+            st.write(f"**{gname}** — {len(gdf)} rows")
+            st.dataframe(gdf, use_container_width=True, height=350)
+
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+                drop_singleton_rows(gdf).to_excel(writer, index=False, sheet_name=gname[:31])
+            st.download_button(
+                label=f"Download {gname} (Excel)",
+                data=buffer.getvalue(),
+                file_name=f"{gname}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"dl_{gname}",
+            )
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Triaxial Summary & s–t Analysis
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    st.markdown("---")
+    st.header("Triaxial Summary & s–t Plots")
+
+    tri_df = generate_triaxial_table(combined_groups)
+
     if tri_df.empty:
         st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
     else:
-        # (A) s–t computations 
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
         st_df = calculate_s_t_values(tri_df, mode=mode)
-    
-        # (B) Merge s,t into the Triaxial summary grid (avoid accidental many-to-many merges)
+
         merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in tri_df.columns]
-        cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE"] if c in st_df.columns]
+        cols_from_st = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", "s_total", "s_effective", "s", "t", "TEST_TYPE", "SOURCE_FILE"] if c in st_df.columns]
+
         tri_df_with_st = pd.merge(tri_df, st_df[cols_from_st], on=merge_keys, how="left")
         tri_df_with_st = remove_duplicate_tests(tri_df_with_st)
-    
+
         st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
         st.dataframe(tri_df_with_st, use_container_width=True, height=350)
-    
 
-                # s–t computations & plot
         st.markdown("#### s–t computed values")
-        mode = "Effective" if stress_mode.startswith("Effective") else "Total"
         st_df = compute_s_t(tri_df, mode=mode)
-        
-                # Download triaxial table (with s–t) + Excel Charts
+
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            # 1) Save the with-s,t summary (more useful than raw-only)
             tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
-            # 2) Save the computed s–t values (contains s_total, s_effective, s, t)
             st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
-            # 3) Add Excel charts (s′–t and s–t) on a 'Charts' sheet
             add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
 
-        
         st.download_button(
             "📥 Download Triaxial Summary + s–t (Excel, with charts)",
             data=buffer.getvalue(),
             file_name="triaxial_summary_s_t.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-
-
-            

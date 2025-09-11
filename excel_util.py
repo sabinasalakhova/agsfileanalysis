@@ -1,7 +1,7 @@
 from typing import Dict
 import pandas as pd 
 import io
-from .cleaners import drop_singleton_rows
+from cleaners import drop_singleton_rows
 
 def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
     """

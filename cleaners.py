@@ -1,3 +1,4 @@
+
 import pandas as pd
 import numpy as np
 from typing import List, Tuple, Dict
@@ -70,4 +71,20 @@ def combine_groups(all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]]) -> 
             temp["SOURCE_FILE"] = fname
             combined.setdefault(gname, []).append(temp)
     return {g: drop_singleton_rows(pd.concat(dfs, ignore_index=True)) for g, dfs in combined.items()}
+    
+def coalesce_columns(df: pd.DataFrame, candidates: List[str], new_name: str):
+    """
+    Create/rename a single column 'new_name' from the first existing candidate.
+    """
+    for c in candidates:
+        if c in df.columns:
+            df[new_name] = df[c]
+            return
+    # ensure column exists
+    if new_name not in df.columns:
+        df[new_name] = np.nan
 
+def to_numeric_safe(df: pd.DataFrame, cols: List[str]):
+    for c in cols:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")

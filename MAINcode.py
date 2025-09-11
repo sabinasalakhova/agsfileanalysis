@@ -166,17 +166,49 @@ if uploaded_files:
     
     if tri_df.empty:
         st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
+   
+    
     else:
-        # (A) s–t computations (do this BEFORE displaying the summary)
-        mode = "Effective" if stress_mode.startswith("Effective") else "Total"
+               
+        tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()
+        tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
+    
+        # Mapper: finds the first GIU interval whose HOLE_ID endswith the AGS hole
+        def map_litho(row):
+            h = row["HOLE_ID"]
+            d = row["SPEC_DEPTH"]
+            if pd.isna(h) or pd.isna(d):
+                return None
+    
+            mask = (
+                giu["HOLE_ID"].str.upper().str.strip().str.endswith(h)
+                & (giu["DEPTH_FROM"] <= d)
+                & (giu["DEPTH_TO"]   >= d)
+            )
+            m = giu.loc[mask]
+            return m.iloc[0]["LITH"] if not m.empty else None
+    
+        # Apply mapping
+        tri_df["LITH"] = tri_df.apply(map_litho, axis=1)
+        assigned = tri_df["LITH"].notna().sum()
+        st.write(f"🔍 mapped lithology for {assigned} of {len(tri_df)} records")
+    
+        # ─── (A) s–t computations ───────────────────────────────────────────
+        mode  = "Effective" if stress_mode.startswith("Effective") else "Total"
         st_df = calculate_s_t_values(tri_df)
     
-        # (B) Merge s,t into the Triaxial summary grid (avoid accidental many-to-many merges)
-        merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in tri_df.columns]
+        # ─── (B) Merge s,t into the summary grid ────────────────────────────
+        merge_keys   = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF"] if c in tri_df.columns]
         cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE"] if c in st_df.columns]
-        tri_df_with_st = pd.merge(tri_df, st_df[cols_from_st], on=merge_keys, how="left")
-        tri_df_with_st = remove_duplicate_tests(tri_df_with_st)
     
+        tri_df_with_st = pd.merge(
+            tri_df.assign(LITH=tri_df["LITH"]),     # include LITH here too
+            st_df[cols_from_st],
+            on=merge_keys,
+            how="left"
+        )
+        tri_df_with_st = remove_duplicate_tests(tri_df_with_st)
+
         st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
         st.dataframe(tri_df_with_st, use_container_width=True, height=350)
     
@@ -225,52 +257,6 @@ if uploaded_files:
 
         fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
         st.plotly_chart(fig, use_container_width=True, theme="streamlit")
-        
-        # … after you’ve loaded & cleaned tri_df …
-
-# 1) Clean the GIU sheet exactly like AGS groups
-if giu_file is not None:
-    # read into a DataFrame
-    name = giu_file.name.lower()
-    if name.endswith(".csv"):
-        giu = pd.read_csv(giu_file)
-    else:
-        giu = pd.read_excel(giu_file)
-
-    # normalize & rename
-    giu = normalize_columns(giu)
-    if "LOCA_ID" in giu.columns and "HOLE_ID" not in giu.columns:
-        giu = giu.rename(columns={"LOCA_ID": "HOLE_ID"})
-
-    # apply all your AGS cleaners
-    giu = drop_singleton_rows(giu)
-    giu = expand_rows(giu)
-    giu = giu.applymap(deduplicate_cell)
-    coalesce_columns(giu, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
-    coalesce_columns(giu, ["DEPTH_TO",   "END_DEPTH"],   "DEPTH_TO")
-    to_numeric_safe(giu, ["DEPTH_FROM", "DEPTH_TO"])
-
-    st.write("Cleaned GIU intervals:")
-    st.dataframe(giu, use_container_width=True)
-
-    # 2) Define the mapper *inside* the same scope so `giu` is visible
-    def map_litho(row):
-        hole  = str(row.get("HOLE_ID", "")).strip().upper()
-        depth = row.get("SPEC_DEPTH")
-        if not hole or pd.isna(depth):
-            return None
-
-        # Match any GIU.HOLE_ID that endswith the AGS hole
-        mask = (
-            giu["HOLE_ID"].str.upper().str.strip().str.endswith(hole)
-            & (giu["DEPTH_FROM"] <= depth)
-            & (giu["DEPTH_TO"]   >= depth)
-        )
-        matches = giu.loc[mask]
-        return matches.iloc[0]["LITH"] if not matches.empty else None
-
-    # 3) Apply it to your triaxial summary
-    tri_df["LITH"] = tri_df.apply(map_litho, axis=1)
 
 else:
     st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")

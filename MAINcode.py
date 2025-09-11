@@ -50,54 +50,61 @@ giu_file = st.file_uploader(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Step 3: Clean and Parse AGS Files
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-def process_uploaded_ags_files(uploaded_files) -> Dict[str, pd.DataFrame]:
-    """Full cleaning and parsing pipeline for uploaded AGS files."""
-    all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]] = []
-
-    for f in uploaded_files:
-        file_bytes = f.getvalue()
-        _ = analyze_ags_content(file_bytes)
-        gdict = parse_ags_file(file_bytes)
-
-        for gname, df in gdict.items():
-            if df is None or df.empty:
-                continue
-
-            df = normalize_columns(df)
-            df = drop_singleton_rows(df)
-            df = expand_rows(df)
-            df = df.applymap(deduplicate_cell)
-            coalesce_columns(df, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
-            coalesce_columns(df, ["DEPTH_TO", "END_DEPTH"], "DEPTH_TO")
-            to_numeric_safe(df, ["DEPTH_FROM", "DEPTH_TO"])
-            df["SOURCE_FILE"] = f.name
-
-        all_group_dfs.append((f.name, gdict))
-
-    return combine_groups(all_group_dfs)
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Step 4: Run App Logic
+# Step 3:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 if uploaded_files:
-    # Parse all uploaded files
     all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]] = []
-    diagnostics = []
+    diagnostics: List[Tuple[str, Dict[str, bool]]] = []
 
     for f in uploaded_files:
         file_bytes = f.getvalue()
+
+        # 1) Diagnostics
         flags = analyze_ags_content(file_bytes)
         diagnostics.append((f.name, flags))
-        gdict = parse_ags_file(file_bytes)
-        # Attach source file tag
-        for g in gdict.values():
-            if g is not None:
-                g["SOURCE_FILE"] = f.name
-        all_group_dfs.append((f.name, gdict))
+
+        # 2) Parse into per-group DataFrames
+        raw_groups: Dict[str, pd.DataFrame] = parse_ags_file(file_bytes)
+        cleaned_groups: Dict[str, pd.DataFrame] = {}
+
+        for group_name, df in raw_groups.items():
+            # skip empty groups
+            if df is None or df.empty:
+                continue
+
+            # 3) Normalize column names
+            df = normalize_columns(df)
+
+            # 4) Drop rows where only one cell is populated
+            df = drop_singleton_rows(df)
+
+            # 5) Expand any multi-interval rows into one record per interval
+            df = expand_rows(df)
+
+            # 6) Clean up duplicate values within each cell
+            df = df.applymap(deduplicate_cell)
+
+            # 7) Unify depth columns
+            coalesce_columns(df, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
+            coalesce_columns(df, ["DEPTH_TO",   "END_DEPTH"],   "DEPTH_TO")
+            to_numeric_safe(df, ["DEPTH_FROM", "DEPTH_TO"])
+
+            # 8) Tag origin file
+            df["SOURCE_FILE"] = f.name
+
+            # store cleaned group
+            cleaned_groups[group_name] = df
+
+        # collect this file’s cleaned groups
+        all_group_dfs.append((f.name, cleaned_groups))
+
+    # 9) Combine across files
+    combined_groups = combine_groups(all_group_dfs)
+
+    # Now `combined_groups` contains one cleaned DataFrame per AGS group,
+    # merged across all uploaded files. You can proceed to triaxial/lithology logic…
+
 
     # Show quick diagnostics
     with st.expander("File diagnostics (AGS type & key groups)", expanded=False):
@@ -106,8 +113,6 @@ if uploaded_files:
         )
         st.dataframe(diag_df, use_container_width=True)
 
-    # Combine groups across files
-    combined_groups = combine_groups(all_group_dfs)
 
     # Sidebar: downloads and plotting options
     with st.sidebar:

@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple, Optional
 import numpy as np
 import pandas as pd
 import streamlit as st
-from scipy.stats import linregress
+from scipy import linregress
 
 # External modules
 from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file

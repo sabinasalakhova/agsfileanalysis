@@ -261,21 +261,4 @@ if uploaded_files:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     
-        # ─── 8) Interactive s–t Plot ───────────────────────────────────────
-        fdf = st_df.copy()
-        hover_cols = [c for c in ["HOLE_ID","TEST_TYPE","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","SOURCE_FILE"] 
-                      if c in fdf.columns]
-        fig = px.scatter(
-            fdf,
-            x="s", y="t",
-            facet_col=facet_col if facet_col in fdf.columns else None,
-            symbol="TEST_TYPE" if "TEST_TYPE" in fdf.columns else None,
-            hover_data=hover_cols,
-            title=f"s–t Plot ({mode} stress)",
-            labels={"s": "s (kPa)", "t": "t = q/2 (kPa)"},
-            template="simple_white"
-        )
-        if show_labels and "HOLE_ID" in fdf.columns:
-            fig.update_traces(text="HOLE_ID", textposition="top center", mode="markers+text")
-        fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
-        st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+       

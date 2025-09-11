@@ -1,0 +1,55 @@
+import pandas as pd
+import numpy as np
+
+def drop_singleton_rows(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    # Treat empty strings and whitespace as NaN
+    clean = df.replace(r"^\s*$", np.nan, regex=True).infer_objects(copy=False)
+    nn = clean.notna().sum(axis=1)
+    return df.loc[nn > 1].reset_index(drop=True)
+
+def deduplicate_cell(cell):
+    if pd.isna(cell):
+        return cell
+    parts = [p.strip() for p in str(cell).split(" | ")]
+    unique_parts = []
+    for p in parts:
+        if p and p not in unique_parts:
+            unique_parts.append(p)
+    return " | ".join(unique_parts)
+
+
+def expand_rows(df: pd.DataFrame) -> pd.DataFrame:
+    
+    ##Expand rows where any cell contains ' | ' separated values,
+    ##but skip expansion if all split values across columns are identical.
+    
+    expanded_rows = []
+
+    for _, row in df.iterrows():
+        split_values = {
+            col: (str(row[col]).split(" | ") if pd.notna(row[col]) else [""])
+            for col in df.columns
+        }
+
+        # Check if all columns have the same repeated value
+        all_same = all(
+            len(set(values)) == 1 for values in split_values.values()
+        )
+
+        if all_same and all(len(values) > 1 for values in split_values.values()):
+            # If all values are the same and repeated, keep as single row
+            new_row = {col: split_values[col][0] for col in df.columns}
+            expanded_rows.append(new_row)
+        else:
+            # Expand into multiple rows
+            max_len = max(len(v) for v in split_values.values()) if split_values else 1
+            for i in range(max_len):
+                new_row = {
+                    col: (split_values[col][i] if i < len(split_values[col]) else "")
+                    for col in df.columns
+                }
+                expanded_rows.append(new_row)
+
+    return pd.DataFrame(expanded_rows) 

@@ -1,7 +1,7 @@
 from typing import Dict, Tuple
 import numpy as np
 import pandas as pd
-from scipy.stats import linregress
+
 
 from cleaners import coalesce_columns, to_numeric_safe, drop_singleton_rows
 

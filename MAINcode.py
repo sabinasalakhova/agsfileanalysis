@@ -228,7 +228,7 @@ if uploaded_files:
         st.write(f"🔍 Mapped LITH for {tri_df['LITH'].notna().sum()} / {len(tri_df)} records")
     
         # ─── 4) Compute s & t ───────────────────────────────────────────────
-        mode  = "Effective" if stress_mode.startswith("Effective") else "Total"
+       
         st_df = calculate_s_t_values(tri_df)
     
         # ─── 5) Merge s,t (and LITH) into final summary ────────────────────

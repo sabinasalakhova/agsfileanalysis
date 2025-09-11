@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+from typing import List, Tuple, Dict
+
 
 def drop_singleton_rows(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -21,10 +23,10 @@ def deduplicate_cell(cell):
 
 
 def expand_rows(df: pd.DataFrame) -> pd.DataFrame:
-    
-    ##Expand rows where any cell contains ' | ' separated values,
-    ##but skip expansion if all split values across columns are identical.
-    
+    """
+    Expand rows where any cell contains ' | ' separated values,
+    but skip expansion if all split values across columns are identical.
+    """
     expanded_rows = []
 
     for _, row in df.iterrows():
@@ -53,3 +55,19 @@ def expand_rows(df: pd.DataFrame) -> pd.DataFrame:
                 expanded_rows.append(new_row)
 
     return pd.DataFrame(expanded_rows) 
+
+def combine_groups(all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]]) -> Dict[str, pd.DataFrame]:
+    """
+    Combine groups across files. Adds SOURCE_FILE column.
+    Returns {group_name: combined_df}
+    """
+    combined: Dict[str, List[pd.DataFrame]] = {}
+    for fname, gdict in all_group_dfs:
+        for gname, df in gdict.items():
+            if df is None or df.empty:
+                continue
+            temp = df.copy()
+            temp["SOURCE_FILE"] = fname
+            combined.setdefault(gname, []).append(temp)
+    return {g: drop_singleton_rows(pd.concat(dfs, ignore_index=True)) for g, dfs in combined.items()}
+

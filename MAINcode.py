@@ -1,15 +1,13 @@
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Imports
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import io
-import re
-from typing import Dict, List, Tuple, Optional
 
-import numpy as np
+
 import pandas as pd
 import streamlit as st
-import scipy
-from scipy.stats import linregress
+
 
 # External modules
 from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file
@@ -93,36 +91,4 @@ if uploaded_files:
     )
 else:
     st.warning("⚠️ No AGS files uploaded yet.")
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Step 4: Plot s-t with Best-Fit Line
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-st.markdown("---")
-st.header("s-t Plot with Strength Parameters")
-
-if not triaxial_df.empty and "s" in triaxial_df.columns and "t" in triaxial_df.columns:
-    df_plot = triaxial_df.dropna(subset=["s", "t"]).copy()
-
-    # Estimate strength parameters
-    phi, cohesion = estimate_strength_params(df_plot)
-
-    # Fit line
-    slope, intercept, _, _, _ = linregress(df_plot["s"], df_plot["t"])
-    df_plot["t_fit"] = df_plot["s"] * slope + intercept
-
-    # Plot
-    fig = px.scatter(
-        df_plot,
-        x="s",
-        y="t",
-        color="LITHOLOGY",
-        hover_data=["HOLE_ID", "SPEC_DEPTH"],
-        title=f"t–s Plot (φ′ ≈ {phi}°, c′ ≈ {cohesion} kPa)"
-    )
-    fig.add_scatter(x=df_plot["s"], y=df_plot["t_fit"], mode="lines", name="Best-Fit Line")
-
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("ℹ️ No valid s–t data available for plotting.")
 

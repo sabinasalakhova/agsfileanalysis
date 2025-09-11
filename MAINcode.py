@@ -8,6 +8,7 @@
 import pandas as pd
 import streamlit as st
 from typing import List, Tuple, Dict
+import io
 
 
 # External modules

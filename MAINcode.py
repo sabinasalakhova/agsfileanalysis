@@ -279,7 +279,7 @@ if uploaded_files:
             matches = giu.loc[mask]
             return matches.iloc[0]["LITH"] if not matches.empty else None
             
-        tri_df_with_st["LITH"] = tri_df.apply(map_litho, axis=1)
+        tri_df_with_st["LITH"] = tri_df_with_st.apply(map_litho, axis=1)
 
 else:
     st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")

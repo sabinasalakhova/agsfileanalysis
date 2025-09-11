@@ -13,7 +13,7 @@ import io
 
 # External modules
 from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file
-from cleaners import deduplicate_cell, drop_singleton_rows, expand_rows, combine_groups, coalesce_columns, to_numeric_safe
+from cleaners import deduplicate_cell, drop_singleton_rows, expand_rows, combine_groups, coalesce_columns, to_numeric_safe, normalize_columns
 from triaxial import generate_triaxial_table, generate_triaxial_with_lithology, calculate_s_t_values, remove_duplicate_tests
 
 from excel_util import  add_st_charts_to_excel, build_all_groups_excel, remove_duplicate_tests
@@ -50,33 +50,73 @@ giu_file = st.file_uploader(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Step 3: Process 
+Step 3: clean up
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-if uploaded_files:
-    # Parse all uploaded files
+def process_uploaded_ags_files(uploaded_files) -> Dict[str, pd.DataFrame]:
+    """
+    Full cleaning and parsing pipeline for uploaded AGS files.
+    Returns a combined dictionary of cleaned AGS groups.
+    """
     all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]] = []
-    diagnostics = []
 
+    for f in uploaded_files:
+        file_bytes = f.getvalue()
+
+        # Analyze and parse
+        _ = analyze_ags_content(file_bytes)
+        gdict = parse_ags_file(file_bytes)
+
+        for gname, df in gdict.items():
+            if df is None or df.empty:
+                continue
+
+            # Normalize column names
+            df = normalize_columns(df)
+
+            # Drop singleton rows
+            df = drop_singleton_rows(df)
+
+            # Expand multi-value rows
+            df = expand_rows(df)
+
+            # Deduplicate cells
+            for col in df.columns:
+                df[col] = df[col].apply(deduplicate_cell)
+
+            # Coalesce common depth columns
+            coalesce_columns(df, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
+            coalesce_columns(df, ["DEPTH_TO", "END_DEPTH"], "DEPTH_TO")
+
+            # Convert depth columns to numeric
+            to_numeric_safe(df, ["DEPTH_FROM", "DEPTH_TO"])
+
+            # Tag source file
+            df["SOURCE_FILE"] = f.name
+
+        all_group_dfs.append((f.name, gdict))
+
+    # Combine all cleaned groups
+    return combine_groups(all_group_dfs)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Step 4: Parse and Clean
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+if uploaded_files:
+    # Parse and clean all uploaded files
+    combined_groups = process_uploaded_ags_files(uploaded_files)
+
+    # Diagnostics
+    diagnostics = []
     for f in uploaded_files:
         file_bytes = f.getvalue()
         flags = analyze_ags_content(file_bytes)
         diagnostics.append((f.name, flags))
-        gdict = parse_ags_file(file_bytes)
-        # Attach source file tag
-        for g in gdict.values():
-            if g is not None:
-                g["SOURCE_FILE"] = f.name
-        all_group_dfs.append((f.name, gdict))
 
-    # Show quick diagnostics
     with st.expander("File diagnostics (AGS type & key groups)", expanded=False):
-        diag_df = pd.DataFrame(
-            [{"File": n, **flags} for (n, flags) in diagnostics]
-        )
+        diag_df = pd.DataFrame([{"File": n, **flags} for (n, flags) in diagnostics])
         st.dataframe(diag_df, use_container_width=True)
-
-    # Combine groups across files
-    combined_groups = combine_groups(all_group_dfs)
 
     # Sidebar: downloads and plotting options
     with st.sidebar:
@@ -91,8 +131,10 @@ if uploaded_files:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 help="Each AGS group is a separate sheet; all uploaded files are merged."
             )
+
     # Show group tables (with per-group Excel download)
     st.subheader("📋 AGS Groups (merged across all uploaded files)")
+
 
     tabs = st.tabs(sorted(combined_groups.keys()))
     for tab, gname in zip(tabs, sorted(combined_groups.keys())):

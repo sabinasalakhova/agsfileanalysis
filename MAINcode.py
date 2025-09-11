@@ -126,45 +126,45 @@ if uploaded_files:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ags groups combined per tab, button on the left
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if combined_groups:
-    # Sidebar: download all groups as Excel
-        all_xl = build_all_groups_excel(combined_groups)
-        with st.sidebar:
-            st.header("Downloads & Plot Options")
-            st.download_button(
-                "📥 Download ALL groups (one Excel workbook)",
-                data=all_xl,
-                file_name="ags_groups_combined.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Each AGS group is a separate sheet; all uploaded files are merged."
-            )
-
-    # Show group tables with per-group Excel download
-    st.subheader("📋 AGS Groups (merged across all uploaded files)")
-    tabs = st.tabs(sorted(combined_groups.keys()))
-    for tab, gname in zip(tabs, sorted(combined_groups.keys())):
-        with tab:
-            gdf = combined_groups[gname]
-            st.write(f"**{gname}** — {len(gdf)} rows")
-            st.dataframe(gdf, use_container_width=True, height=350)
-
-            # Per-group download (Excel)
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-                drop_singleton_rows(gdf).to_excel(writer, index=False, sheet_name=gname[:31])
-            st.download_button(
-                label=f"Download {gname} (Excel)",
-                data=buffer.getvalue(),
-                file_name=f"{gname}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=f"dl_{gname}",
-            )
-
-    # Triaxial summary and plots
-    st.markdown("---")
-    st.header("Triaxial Summary & s–t Plots")
-
-    tri_df = generate_triaxial_table(combined_groups)
+            if combined_groups:
+            # Sidebar: download all groups as Excel
+                all_xl = build_all_groups_excel(combined_groups)
+                with st.sidebar:
+                    st.header("Downloads & Plot Options")
+                    st.download_button(
+                        "📥 Download ALL groups (one Excel workbook)",
+                        data=all_xl,
+                        file_name="ags_groups_combined.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        help="Each AGS group is a separate sheet; all uploaded files are merged."
+                    )
+        
+            # Show group tables with per-group Excel download
+            st.subheader("📋 AGS Groups (merged across all uploaded files)")
+            tabs = st.tabs(sorted(combined_groups.keys()))
+            for tab, gname in zip(tabs, sorted(combined_groups.keys())):
+                with tab:
+                    gdf = combined_groups[gname]
+                    st.write(f"**{gname}** — {len(gdf)} rows")
+                    st.dataframe(gdf, use_container_width=True, height=350)
+        
+                    # Per-group download (Excel)
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+                        drop_singleton_rows(gdf).to_excel(writer, index=False, sheet_name=gname[:31])
+                    st.download_button(
+                        label=f"Download {gname} (Excel)",
+                        data=buffer.getvalue(),
+                        file_name=f"{gname}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=f"dl_{gname}",
+                    )
+        
+            # Triaxial summary and plots
+            st.markdown("---")
+            st.header("Triaxial Summary & s–t Plots")
+        
+            tri_df = generate_triaxial_table(combined_groups)
    
     if tri_df.empty:
         st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")

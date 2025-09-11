@@ -230,19 +230,19 @@ if uploaded_files:
         giu["DEPTH_FROM"] = pd.to_numeric(giu["DEPTH_FROM"], errors="coerce")
         giu["DEPTH_TO"]   = pd.to_numeric(giu["DEPTH_TO"],   errors="coerce")
         def map_litho(row):
-        hole  = str(row.get("HOLE_ID", "")).upper()
-        depth = row.get("SPEC_DEPTH")
-        if pd.isna(hole) or pd.isna(depth):
-            return None
-    
-        # Match any GIU HOLE_ID that ends with the AGS HOLE_ID
-        mask = (
-            giu["HOLE_ID"].str.upper().str.endswith(hole)
-            & (giu["DEPTH_FROM"] <= depth)
-            & (giu["DEPTH_TO"]   >= depth)
-        )
-        matches = giu.loc[mask]
-        return matches.iloc[0]["LITH"] if not matches.empty else None
+            hole  = str(row.get("HOLE_ID", "")).upper()
+            depth = row.get("SPEC_DEPTH")
+            if pd.isna(hole) or pd.isna(depth):
+                return None
+        
+            # Match any GIU HOLE_ID that ends with the AGS HOLE_ID
+            mask = (
+                giu["HOLE_ID"].str.upper().str.endswith(hole)
+                & (giu["DEPTH_FROM"] <= depth)
+                & (giu["DEPTH_TO"]   >= depth)
+            )
+            matches = giu.loc[mask]
+            return matches.iloc[0]["LITH"] if not matches.empty else None
         tri_df["LITH"] = tri_df.apply(map_litho, axis=1)
 
 else:

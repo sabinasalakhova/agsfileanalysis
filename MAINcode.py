@@ -188,95 +188,95 @@ if giu_file is not None:
 st.markdown("---")
 st.header("Triaxial Summary & s–t Plots")
 
-# 1) Build raw triaxial summary
-tri_df = generate_triaxial_table(combined_groups)
-
-if tri_df.empty:
-    st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
-else:
-    if giu_df is None:
-        st.error("Please upload and clean the GIU table first.")
-        st.stop()
-
-    # ─── 2) Normalize IDs & depths ─────────────────────────────────────
-    tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()
-    tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
-
-
-    giu["HOLE_ID"]     = (giu["HOLE_ID"]
-                            .astype(str)
-                            .str.upper()
-                            .str.strip())
-    giu["DEPTH_FROM"]  = pd.to_numeric(giu["DEPTH_FROM"], errors="coerce")
-    giu["DEPTH_TO"]    = pd.to_numeric(giu["DEPTH_TO"],   errors="coerce")
-
-    # ─── 3) Map lithology from GIU into tri_df ─────────────────────────
-    def map_litho(row):
-            hole, depth = row["HOLE_ID"], row["SPEC_DEPTH"]
-            if pd.isna(hole) or pd.isna(depth):
-                return None
+    # 1) Build raw triaxial summary
+    tri_df = generate_triaxial_table(combined_groups)
     
-            mask = (
-                giu_df["HOLE_ID"].str.upper().str.strip().str.endswith(hole)
-                & (giu_df["DEPTH_FROM"] <= depth)
-                & (giu_df["DEPTH_TO"]   >= depth)
-            )
-            sub = giu_df.loc[mask]
-            return sub.iloc[0]["LITH"] if not sub.empty else None
-
-    tri_df["LITH"] = tri_df.apply(map_litho, axis=1)
-    st.write(f"🔍 Mapped LITH for {tri_df['LITH'].notna().sum()} / {len(tri_df)} records")
-
-    # ─── 4) Compute s & t ───────────────────────────────────────────────
-    mode  = "Effective" if stress_mode.startswith("Effective") else "Total"
-    st_df = calculate_s_t_values(tri_df)
-
-    # ─── 5) Merge s,t (and LITH) into final summary ────────────────────
-    merge_keys   = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF"] 
-                    if c in tri_df.columns]
-    st_cols      = [c for c in ["s","t","s_total","s_effective","TEST_TYPE","SOURCE_FILE"]
-                    if c in st_df.columns]
-
-    tri_df_with_st = (
-        tri_df
-          .merge(st_df[merge_keys + st_cols], on=merge_keys, how="left")
-          .pipe(remove_duplicate_tests)
-    )
-
-    # ─── 6) Display summary ─────────────────────────────────────────────
-    st.write(f"**Triaxial summary (with s, t & lithology)** — {len(tri_df_with_st)} rows")
-    st.dataframe(tri_df_with_st, use_container_width=True, height=350)
-
-    # ─── 7) (optional) Excel download with charts ──────────────────────
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
-        st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
-        add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
-
-    st.download_button(
-        "📥 Download Triaxial + s–t (Excel, with charts)",
-        data=buffer.getvalue(),
-        file_name="triaxial_summary_s_t.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    # ─── 8) Interactive s–t Plot ───────────────────────────────────────
-    fdf = st_df.copy()
-    hover_cols = [c for c in ["HOLE_ID","TEST_TYPE","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","SOURCE_FILE"] 
-                  if c in fdf.columns]
-    fig = px.scatter(
-        fdf,
-        x="s", y="t",
-        color=color_by   if color_by   in fdf.columns else None,
-        facet_col=facet_col if facet_col in fdf.columns else None,
-        symbol="TEST_TYPE" if "TEST_TYPE" in fdf.columns else None,
-        hover_data=hover_cols,
-        title=f"s–t Plot ({mode} stress)",
-        labels={"s": "s (kPa)", "t": "t = q/2 (kPa)"},
-        template="simple_white"
-    )
-    if show_labels and "HOLE_ID" in fdf.columns:
-        fig.update_traces(text="HOLE_ID", textposition="top center", mode="markers+text")
-    fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
-    st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+    if tri_df.empty:
+        st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
+    else:
+        if giu_df is None:
+            st.error("Please upload and clean the GIU table first.")
+            st.stop()
+    
+        # ─── 2) Normalize IDs & depths ─────────────────────────────────────
+        tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()
+        tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
+    
+    
+        giu["HOLE_ID"]     = (giu["HOLE_ID"]
+                                .astype(str)
+                                .str.upper()
+                                .str.strip())
+        giu["DEPTH_FROM"]  = pd.to_numeric(giu["DEPTH_FROM"], errors="coerce")
+        giu["DEPTH_TO"]    = pd.to_numeric(giu["DEPTH_TO"],   errors="coerce")
+    
+        # ─── 3) Map lithology from GIU into tri_df ─────────────────────────
+        def map_litho(row):
+                hole, depth = row["HOLE_ID"], row["SPEC_DEPTH"]
+                if pd.isna(hole) or pd.isna(depth):
+                    return None
+        
+                mask = (
+                    giu_df["HOLE_ID"].str.upper().str.strip().str.endswith(hole)
+                    & (giu_df["DEPTH_FROM"] <= depth)
+                    & (giu_df["DEPTH_TO"]   >= depth)
+                )
+                sub = giu_df.loc[mask]
+                return sub.iloc[0]["LITH"] if not sub.empty else None
+    
+        tri_df["LITH"] = tri_df.apply(map_litho, axis=1)
+        st.write(f"🔍 Mapped LITH for {tri_df['LITH'].notna().sum()} / {len(tri_df)} records")
+    
+        # ─── 4) Compute s & t ───────────────────────────────────────────────
+        mode  = "Effective" if stress_mode.startswith("Effective") else "Total"
+        st_df = calculate_s_t_values(tri_df)
+    
+        # ─── 5) Merge s,t (and LITH) into final summary ────────────────────
+        merge_keys   = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF"] 
+                        if c in tri_df.columns]
+        st_cols      = [c for c in ["s","t","s_total","s_effective","TEST_TYPE","SOURCE_FILE"]
+                        if c in st_df.columns]
+    
+        tri_df_with_st = (
+            tri_df
+              .merge(st_df[merge_keys + st_cols], on=merge_keys, how="left")
+              .pipe(remove_duplicate_tests)
+        )
+    
+        # ─── 6) Display summary ─────────────────────────────────────────────
+        st.write(f"**Triaxial summary (with s, t & lithology)** — {len(tri_df_with_st)} rows")
+        st.dataframe(tri_df_with_st, use_container_width=True, height=350)
+    
+        # ─── 7) (optional) Excel download with charts ──────────────────────
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
+            st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
+            add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
+    
+        st.download_button(
+            "📥 Download Triaxial + s–t (Excel, with charts)",
+            data=buffer.getvalue(),
+            file_name="triaxial_summary_s_t.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    
+        # ─── 8) Interactive s–t Plot ───────────────────────────────────────
+        fdf = st_df.copy()
+        hover_cols = [c for c in ["HOLE_ID","TEST_TYPE","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","SOURCE_FILE"] 
+                      if c in fdf.columns]
+        fig = px.scatter(
+            fdf,
+            x="s", y="t",
+            color=color_by   if color_by   in fdf.columns else None,
+            facet_col=facet_col if facet_col in fdf.columns else None,
+            symbol="TEST_TYPE" if "TEST_TYPE" in fdf.columns else None,
+            hover_data=hover_cols,
+            title=f"s–t Plot ({mode} stress)",
+            labels={"s": "s (kPa)", "t": "t = q/2 (kPa)"},
+            template="simple_white"
+        )
+        if show_labels and "HOLE_ID" in fdf.columns:
+            fig.update_traces(text="HOLE_ID", textposition="top center", mode="markers+text")
+        fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
+        st.plotly_chart(fig, use_container_width=True, theme="streamlit")

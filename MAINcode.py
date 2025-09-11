@@ -268,7 +268,6 @@ if uploaded_files:
         fig = px.scatter(
             fdf,
             x="s", y="t",
-            color=color_by   if color_by   in fdf.columns else None,
             facet_col=facet_col if facet_col in fdf.columns else None,
             symbol="TEST_TYPE" if "TEST_TYPE" in fdf.columns else None,
             hover_data=hover_cols,

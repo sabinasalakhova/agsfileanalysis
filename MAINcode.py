@@ -169,7 +169,7 @@ if uploaded_files:
     else:
         # (A) s–t computations (do this BEFORE displaying the summary)
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
-        st_df = compute_s_t(tri_df, mode=mode)
+        st_df = calculate_s_t_values(tri_df, mode=mode)
     
         # (B) Merge s,t into the Triaxial summary grid (avoid accidental many-to-many merges)
         merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in tri_df.columns]

@@ -1,7 +1,7 @@
 
-from typing import Dict
-import pandas as pd
-
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# helper:generates triaxial data table from ags contents
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
@@ -58,3 +58,77 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
 
     return final_df
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# helper: associates values in triaxial table with LITH from giu_file
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def generate_triaxial_with_lithology(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """
+    Builds triaxial summary table and maps lithology from GIU group based on depth ranges.
+    Optimized for large GIU files by grouping intervals by HOLE_ID.
+    Assumes all input groups are cleaned.
+    """
+    triaxial_df = generate_triaxial_table(groups)
+    giu = groups.get("GIU", pd.DataFrame()).copy()
+
+    if giu.empty or "HOLE_ID" not in giu.columns:
+        triaxial_df["LITHOLOGY"] = None
+        return triaxial_df
+
+    # Normalize GIU depth columns
+    coalesce_columns(giu, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
+    coalesce_columns(giu, ["DEPTH_TO", "END_DEPTH"], "DEPTH_TO")
+    coalesce_columns(giu, ["GEOL_DESC", "GEOL_GEOL", "GEOL_GEO2"], "LITHOLOGY")
+    to_numeric_safe(giu, ["DEPTH_FROM", "DEPTH_TO"])
+
+    # Group GIU intervals by HOLE_ID
+    giu_by_hole = {
+        hole: df.dropna(subset=["DEPTH_FROM", "DEPTH_TO"])
+        for hole, df in giu.groupby("HOLE_ID")
+    }
+
+    # Efficient row-wise mapping
+    def map_litho(row):
+        hole = row.get("HOLE_ID")
+        depth = row.get("SPEC_DEPTH")
+        if pd.isna(hole) or pd.isna(depth):
+            return None
+        giu_rows = giu_by_hole.get(hole)
+        if giu_rows is None:
+            return None
+        match = giu_rows[
+            (giu_rows["DEPTH_FROM"] <= depth) &
+            (giu_rows["DEPTH_TO"] >= depth)
+        ]
+        return match["LITHOLOGY"].iloc[0] if not match.empty else None
+
+    triaxial_df["LITHOLOGY"] = triaxial_df.apply(map_litho, axis=1)
+    return triaxial_df
+    
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# helper: computes s,t values
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def calculate_s_t_values(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates s and t values for triaxial test data.
+    Works with both AGS3 (TRIX) and AGS4 (TRET) formats.
+    Assumes df contains either TRIX or TRET fields.
+    """
+
+    # Coalesce AGS3 and AGS4 fields
+    coalesce_columns(df, ["TRIX_CELL", "TRET_CELL"], "CELL")     # σ3′
+    coalesce_columns(df, ["TRIX_DEVF", "TRET_DEVF"], "DEVF")     # deviator stress
+    coalesce_columns(df, ["TRIX_PWPF", "TRET_PWPF"], "PWPF")     # pore pressure
+
+    # Convert to numeric
+    to_numeric_safe(df, ["CELL", "DEVF"])
+
+    # Calculate σ1′ = σ3′ + DEVF
+    df["SIGMA_1"] = df["CELL"] + df["DEVF"]
+
+    # Calculate s and t
+    df["s"] = (df["SIGMA_1"] + df["CELL"]) / 2
+    df["t"] = df["DEVF"] / 2
+
+    return df
+
+    return df

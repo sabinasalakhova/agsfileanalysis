@@ -158,125 +158,97 @@ if uploaded_files:
  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    # --- Triaxial summary & plots
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    st.markdown("---")
-    st.header(" Triaxial Summary & s–t Plots")
+st.markdown("---")
+st.header("Triaxial Summary & s–t Plots")
 
-    
-    tri_df = generate_triaxial_table(combined_groups)
-    
-    if tri_df.empty:
-        st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
-   
-    else:
-               
-        tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()
-        tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
-    
-        # Mapper: finds the first GIU interval whose HOLE_ID endswith the AGS hole
-        def map_litho(row):
-            h = row["HOLE_ID"]
-            d = row["SPEC_DEPTH"]
-            if pd.isna(h) or pd.isna(d):
-                return None
-    
-            mask = (
-                giu["HOLE_ID"].str.upper().str.strip().str.endswith(h)
-                & (giu["DEPTH_FROM"] <= d)
-                & (giu["DEPTH_TO"]   >= d)
-            )
-            m = giu_file.loc[mask]
-            return m.iloc[0]["LITH"] if not m.empty else None
-    
-        # Apply mapping
-        tri_df["LITH"] = tri_df.apply(map_litho, axis=1)
-        assigned = tri_df["LITH"].notna().sum()
-        st.write(f"🔍 mapped lithology for {assigned} of {len(tri_df)} records")
-    
-        # ─── (A) s–t computations ───────────────────────────────────────────
-        mode  = "Effective" if stress_mode.startswith("Effective") else "Total"
-        st_df = calculate_s_t_values(tri_df)
-    
-        # ─── (B) Merge s,t into the summary grid ────────────────────────────
-        merge_keys   = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF"] if c in tri_df.columns]
-        cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE"] if c in st_df.columns]
-    
-        tri_df_with_st = pd.merge(
-            tri_df.assign(LITH=tri_df["LITH"]),     # include LITH 
-            st_df[cols_from_st],
-            on=merge_keys,
-            how="left"
-        )
-        tri_df_with_st = remove_duplicate_tests(tri_df_with_st)
-        # Normalize first
-        tri_df_with_st["HOLE_ID"]    = tri_df_with_st["HOLE_ID"].astype(str).str.upper().str.strip()
-        tri_df_with_st["SPEC_DEPTH"] = pd.to_numeric(tri_df_with_st["SPEC_DEPTH"], errors="coerce")
-        
-        # Define the same mapper, pointing at `giu`
-        def map_litho_after(row):
-            hole  = row["HOLE_ID"]
-            depth = row["SPEC_DEPTH"]
-            if not hole or pd.isna(depth):
-                return None
-        
-            mask = (
-                giu["HOLE_ID"].str.endswith(hole)
-                & (giu["DEPTH_FROM"] <= depth)
-                & (giu["DEPTH_TO"]   >= depth)
-            )
-            sub = giu.loc[mask]
-            return sub.iloc[0]["LITH"] if not sub.empty else None
-        
-        # Apply to the merged table
-        tri_df_with_st["LITH"] = tri_df_with_st.apply(map_litho_after, axis=1)
-        st.write(f"🔍 mapped lithology for {tri_df_with_st['LITH'].notna().sum()} records")
-        st.write(f"**Triaxial summary (with s & t)** — {len(tri_df_with_st)} rows")
-        st.dataframe(tri_df_with_st, use_container_width=True, height=350)
-    
+# 1) Build raw triaxial summary
+tri_df = generate_triaxial_table(combined_groups)
 
-                # s–t computations & plot
-        st.markdown("#### s–t computed values")
-        mode = "Effective" if stress_mode.startswith("Effective") else "Total"
-        st_df = calculate_s_t_values(tri_df)
-        
-                # Download triaxial table (with s–t) + Excel Charts
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            # 1) Save the with-s,t summary (more useful than raw-only)
-            tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
-            # 2) Save the computed s–t values (contains s_total, s_effective, s, t)
-            st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
-            # 3) Add Excel charts (s′–t and s–t) on a 'Charts' sheet
-            add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
-
-        
-        st.download_button(
-            "📥 Download Triaxial Summary + s–t (Excel, with charts)",
-            data=buffer.getvalue(),
-            file_name="triaxial_summary_s_t.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-
-        fdf = st_df.copy()
-        
-        # Plot
-        hover_cols = [c for c in ["HOLE_ID", "TEST_TYPE", "SPEC_DEPTH", "CELL", "PWPF", "DEVF", "s_total", "s_effective", "SOURCE_FILE"] if c in fdf.columns]
-        fig = px.scatter(
-            fdf,
-            x="s",
-            y="t",
-            color=fdf[color_by] if color_by in fdf.columns else None,
-            facet_col=facet_col if facet_col in fdf.columns else None,
-            symbol="TEST_TYPE" if "TEST_TYPE" in fdf.columns else None,
-            hover_data=hover_cols,
-            title=f"s–t Plot ({mode} stress)",
-            labels={"s": "s (kPa)", "t": "t = q/2 (kPa)"},
-            template="simple_white"
-        )
-        if show_labels and "HOLE_ID" in fdf.columns:
-            fig.update_traces(text=fdf["HOLE_ID"], textposition="top center", mode="markers+text")
-
-        fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
-        st.plotly_chart(fig, use_container_width=True, theme="streamlit")
-
+if tri_df.empty:
+    st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
 else:
-    st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")
+    # ─── 2) Normalize IDs & depths ─────────────────────────────────────
+    tri_df["HOLE_ID"]    = (tri_df["HOLE_ID"]
+                            .astype(str)
+                            .str.upper()
+                            .str.strip())
+    tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
+
+    giu["HOLE_ID"]     = (giu["HOLE_ID"]
+                            .astype(str)
+                            .str.upper()
+                            .str.strip())
+    giu["DEPTH_FROM"]  = pd.to_numeric(giu["DEPTH_FROM"], errors="coerce")
+    giu["DEPTH_TO"]    = pd.to_numeric(giu["DEPTH_TO"],   errors="coerce")
+
+    # ─── 3) Map lithology from GIU into tri_df ─────────────────────────
+    def map_litho(row):
+        h, d = row["HOLE_ID"], row["SPEC_DEPTH"]
+        if pd.isna(h) or pd.isna(d):
+            return None
+
+        mask = (
+            giu["HOLE_ID"].str.endswith(h) &
+            (giu["DEPTH_FROM"] <= d)   &
+            (giu["DEPTH_TO"]   >= d)
+        )
+        m = giu.loc[mask]
+        return m["LITH"].iloc[0] if not m.empty else None
+
+    tri_df["LITH"] = tri_df.apply(map_litho, axis=1)
+    assigned = tri_df["LITH"].notna().sum()
+    st.write(f"🔍 Mapped lithology for {assigned} of {len(tri_df)} records")
+
+    # ─── 4) Compute s & t ───────────────────────────────────────────────
+    mode  = "Effective" if stress_mode.startswith("Effective") else "Total"
+    st_df = calculate_s_t_values(tri_df)
+
+    # ─── 5) Merge s,t (and LITH) into final summary ────────────────────
+    merge_keys   = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF"] 
+                    if c in tri_df.columns]
+    st_cols      = [c for c in ["s","t","s_total","s_effective","TEST_TYPE","SOURCE_FILE"]
+                    if c in st_df.columns]
+
+    tri_df_with_st = (
+        tri_df
+          .merge(st_df[merge_keys + st_cols], on=merge_keys, how="left")
+          .pipe(remove_duplicate_tests)
+    )
+
+    # ─── 6) Display summary ─────────────────────────────────────────────
+    st.write(f"**Triaxial summary (with s, t & lithology)** — {len(tri_df_with_st)} rows")
+    st.dataframe(tri_df_with_st, use_container_width=True, height=350)
+
+    # ─── 7) (optional) Excel download with charts ──────────────────────
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
+        st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
+        add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
+
+    st.download_button(
+        "📥 Download Triaxial + s–t (Excel, with charts)",
+        data=buffer.getvalue(),
+        file_name="triaxial_summary_s_t.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # ─── 8) Interactive s–t Plot ───────────────────────────────────────
+    fdf = st_df.copy()
+    hover_cols = [c for c in ["HOLE_ID","TEST_TYPE","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","SOURCE_FILE"] 
+                  if c in fdf.columns]
+    fig = px.scatter(
+        fdf,
+        x="s", y="t",
+        color=color_by   if color_by   in fdf.columns else None,
+        facet_col=facet_col if facet_col in fdf.columns else None,
+        symbol="TEST_TYPE" if "TEST_TYPE" in fdf.columns else None,
+        hover_data=hover_cols,
+        title=f"s–t Plot ({mode} stress)",
+        labels={"s": "s (kPa)", "t": "t = q/2 (kPa)"},
+        template="simple_white"
+    )
+    if show_labels and "HOLE_ID" in fdf.columns:
+        fig.update_traces(text="HOLE_ID", textposition="top center", mode="markers+text")
+    fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
+    st.plotly_chart(fig, use_container_width=True, theme="streamlit")

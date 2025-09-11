@@ -180,11 +180,11 @@ if uploaded_files:
                 return None
     
             mask = (
-                giu["HOLE_ID"].str.upper().str.strip().str.endswith(h)
-                & (giu["DEPTH_FROM"] <= d)
-                & (giu["DEPTH_TO"]   >= d)
+                giu_file["HOLE_ID"].str.upper().str.strip().str.endswith(h)
+                & (giu_file["DEPTH_FROM"] <= d)
+                & (giu_file["DEPTH_TO"]   >= d)
             )
-            m = giu.loc[mask]
+            m = giu_file.loc[mask]
             return m.iloc[0]["LITH"] if not m.empty else None
     
         # Apply mapping
@@ -201,7 +201,7 @@ if uploaded_files:
         cols_from_st = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF","s_total","s_effective","s","t","TEST_TYPE","SOURCE_FILE"] if c in st_df.columns]
     
         tri_df_with_st = pd.merge(
-            tri_df.assign(LITH=tri_df["LITH"]),     # include LITH here too
+            tri_df.assign(LITH=tri_df["LITH"]),     # include LITH 
             st_df[cols_from_st],
             on=merge_keys,
             how="left"

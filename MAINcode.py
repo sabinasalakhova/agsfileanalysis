@@ -226,60 +226,51 @@ if uploaded_files:
         fig.update_layout(legend_title_text=color_by if color_by in fdf.columns else "Legend")
         st.plotly_chart(fig, use_container_width=True, theme="streamlit")
         
-        
-        if giu_file is not None:
-            # 2) Read it
-            filename = giu_file.name.lower()
-            if filename.endswith(".csv"):
-                giu = pd.read_csv(giu_file)
-            else:
-                giu = pd.read_excel(giu_file)
-            
-            # 3) Normalize column names
-            giu = normalize_columns(giu)
-            
-            # 4) If someone used LOCA_ID instead of HOLE_ID, rename it
-            if "LOCA_ID" in giu.columns and "HOLE_ID" not in giu.columns:
-                giu = giu.rename(columns={"LOCA_ID": "HOLE_ID"})
-            
-            # 5) Drop rows with only one populated cell
-            giu = drop_singleton_rows(giu)
-            
-            # 6) Expand any multi-interval rows into multiple records
-            giu = expand_rows(giu)
-            
-            # 7) Remove duplicate text within each cell
-            giu = giu.applymap(deduplicate_cell)
-            
-            # 8) Coalesce and cast your depth columns
-            coalesce_columns(giu, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
-            coalesce_columns(giu, ["DEPTH_TO",   "END_DEPTH"],   "DEPTH_TO")
-            to_numeric_safe(giu, ["DEPTH_FROM", "DEPTH_TO"])
-            
-            # 9) Now GIU is fully cleaned and ready for mapping:
-            st.write("Cleaned GIU intervals:")
-            st.dataframe(giu, use_container_width=True)
+        # … after you’ve loaded & cleaned tri_df …
 
+# 1) Clean the GIU sheet exactly like AGS groups
+if giu_file is not None:
+    # read into a DataFrame
+    name = giu_file.name.lower()
+    if name.endswith(".csv"):
+        giu = pd.read_csv(giu_file)
+    else:
+        giu = pd.read_excel(giu_file)
 
+    # normalize & rename
+    giu = normalize_columns(giu)
+    if "LOCA_ID" in giu.columns and "HOLE_ID" not in giu.columns:
+        giu = giu.rename(columns={"LOCA_ID": "HOLE_ID"})
 
+    # apply all your AGS cleaners
+    giu = drop_singleton_rows(giu)
+    giu = expand_rows(giu)
+    giu = giu.applymap(deduplicate_cell)
+    coalesce_columns(giu, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
+    coalesce_columns(giu, ["DEPTH_TO",   "END_DEPTH"],   "DEPTH_TO")
+    to_numeric_safe(giu, ["DEPTH_FROM", "DEPTH_TO"])
 
-        
-        def map_litho(row):
-            hole  = str(row.get("HOLE_ID", "")).upper()
-            depth = row.get("SPEC_DEPTH")
-            if pd.isna(hole) or pd.isna(depth):
-                return None
-        
-            # Match any GIU HOLE_ID that ends with the AGS HOLE_ID
-            mask = (
-                giu["HOLE_ID"].str.upper().str.endswith(hole)
-                & (giu["DEPTH_FROM"] <= depth)
-                & (giu["DEPTH_TO"]   >= depth)
-            )
-            matches = giu.loc[mask]
-            return matches.iloc[0]["LITH"] if not matches.empty else None
-            
-        tri_df_with_st["LITH"] = tri_df_with_st.apply(map_litho, axis=1)
+    st.write("Cleaned GIU intervals:")
+    st.dataframe(giu, use_container_width=True)
+
+    # 2) Define the mapper *inside* the same scope so `giu` is visible
+    def map_litho(row):
+        hole  = str(row.get("HOLE_ID", "")).strip().upper()
+        depth = row.get("SPEC_DEPTH")
+        if not hole or pd.isna(depth):
+            return None
+
+        # Match any GIU.HOLE_ID that endswith the AGS hole
+        mask = (
+            giu["HOLE_ID"].str.upper().str.strip().str.endswith(hole)
+            & (giu["DEPTH_FROM"] <= depth)
+            & (giu["DEPTH_TO"]   >= depth)
+        )
+        matches = giu.loc[mask]
+        return matches.iloc[0]["LITH"] if not matches.empty else None
+
+    # 3) Apply it to your triaxial summary
+    tri_df["LITH"] = tri_df.apply(map_litho, axis=1)
 
 else:
     st.info("Upload one or more AGS files to begin. You can select additional files anytime; the app merges all groups and updates tables, downloads, and plots.")

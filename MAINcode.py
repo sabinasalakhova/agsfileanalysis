@@ -50,7 +50,7 @@ giu_file = st.file_uploader(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Step 3:
+# Step 3: Clean AGS DATA
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 if uploaded_files:
@@ -105,16 +105,18 @@ if uploaded_files:
     # Now `combined_groups` contains one cleaned DataFrame per AGS group,
     # merged across all uploaded files. You can proceed to triaxial/lithology logic…
 
-
-    # Show quick diagnostics
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#Step 4: Show quick diagnostics results, user should understand not to mix ags3 and ags4
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     with st.expander("File diagnostics (AGS type & key groups)", expanded=False):
         diag_df = pd.DataFrame(
             [{"File": n, **flags} for (n, flags) in diagnostics]
         )
         st.dataframe(diag_df, use_container_width=True)
 
-
-    # Sidebar: downloads and plotting options
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#Step 5:  Sidebar: downloads and plotting options
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     with st.sidebar:
         st.header("Downloads & Plot Options")
 
@@ -129,14 +131,9 @@ if uploaded_files:
             )
 
         st.markdown("---")
-        st.subheader("s–t plot settings")
-        stress_mode = st.radio("Stress path:", ["Effective (s'–t)", "Total (s–t)"], index=0)
-        color_by = st.selectbox("Color points by:", ["TEST_TYPE", "HOLE_ID", "SOURCE_FILE"], index=0)
-        facet_col = st.selectbox("Facet by (optional):", ["None", "TEST_TYPE", "SOURCE_FILE"], index=0)
-        facet_col = None if facet_col == "None" else facet_col
-        show_labels = st.checkbox("Show HOLE_ID labels", value=False)
-
-    # Show group tables (with per-group Excel download)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#Step 6:  Show group tables (with per-group Excel download)  
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     st.subheader("📋 AGS Groups (merged across all uploaded files)")
 
     tabs = st.tabs(sorted(combined_groups.keys()))
@@ -158,16 +155,18 @@ if uploaded_files:
                 key=f"dl_{gname}",
             )
 
- 
+ # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    # --- Triaxial summary & plots
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     st.markdown("---")
     st.header(" Triaxial Summary & s–t Plots")
+
+    
     tri_df = generate_triaxial_table(combined_groups)
     
     if tri_df.empty:
         st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
    
-    
     else:
                
         tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()

@@ -41,7 +41,7 @@ uploaded_files = st.file_uploader(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("---")
 st.header("Step 2: Upload GIU Lithology Table")
-giu = st.file_uploader(
+giu_file = st.file_uploader(
     label="Upload GIU lithology table (CSV/XLSX/XLS)",
     type=["csv", "xlsx", "xls"],
     accept_multiple_files=False,

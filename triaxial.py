@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 
-from cleaners import coalesce_columns, to_numeric_safe, drop_singleton_rows, deduplicate_cell
+from cleaners import coalesce_columns, to_numeric_safe, drop_singleton_rows, deduplicate_cell, expand_rows
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Core Table Builder

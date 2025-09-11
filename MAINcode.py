@@ -41,7 +41,7 @@ uploaded_files = st.file_uploader(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("---")
 st.header("Step 2: Upload GIU Lithology Table")
-giu_file = st.file_uploader(
+giu = st.file_uploader(
     label="Upload GIU lithology table (CSV/XLSX/XLS)",
     type=["csv", "xlsx", "xls"],
     accept_multiple_files=False,
@@ -180,9 +180,9 @@ if uploaded_files:
                 return None
     
             mask = (
-                giu_file["HOLE_ID"].str.upper().str.strip().str.endswith(h)
-                & (giu_file["DEPTH_FROM"] <= d)
-                & (giu_file["DEPTH_TO"]   >= d)
+                giu["HOLE_ID"].str.upper().str.strip().str.endswith(h)
+                & (giu["DEPTH_FROM"] <= d)
+                & (giu["DEPTH_TO"]   >= d)
             )
             m = giu_file.loc[mask]
             return m.iloc[0]["LITH"] if not m.empty else None

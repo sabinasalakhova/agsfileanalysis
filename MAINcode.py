@@ -50,7 +50,7 @@ giu_file = st.file_uploader(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#Step 3: clean up function
+#Step 3: clean up and parse
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def process_uploaded_ags_files(uploaded_files) -> Dict[str, pd.DataFrame]:
     """
@@ -126,20 +126,21 @@ if uploaded_files:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ags groups combined per tab, button on the left
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        if combined_groups:
-            all_xl = build_all_groups_excel(combined_groups)
-            st.download_button(
-                "📥 Download ALL groups (one Excel workbook)",
-                data=all_xl,
-                file_name="ags_groups_combined.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Each AGS group is a separate sheet; all uploaded files are merged."
-            )
+if combined_groups:
+    # Sidebar: download all groups as Excel
+    all_xl = build_all_groups_excel(combined_groups)
+    with st.sidebar:
+        st.header("Downloads & Plot Options")
+        st.download_button(
+            "📥 Download ALL groups (one Excel workbook)",
+            data=all_xl,
+            file_name="ags_groups_combined.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Each AGS group is a separate sheet; all uploaded files are merged."
+        )
 
-    # Show group tables (with per-group Excel download)
+    # Show group tables with per-group Excel download
     st.subheader("📋 AGS Groups (merged across all uploaded files)")
-
-
     tabs = st.tabs(sorted(combined_groups.keys()))
     for tab, gname in zip(tabs, sorted(combined_groups.keys())):
         with tab:
@@ -159,16 +160,12 @@ if uploaded_files:
                 key=f"dl_{gname}",
             )
 
- 
-
+    # Triaxial summary and plots
     st.markdown("---")
-    st.header(" Triaxial Summary & s–t Plots")
-    combined_groups = process_uploaded_ags_files(uploaded_files)
-    combined_groups = _split_quoted_csv (uploaded_files)
-    combined_groups = parse_ags_file(uploaded_files)
+    st.header("Triaxial Summary & s–t Plots")
 
     tri_df = generate_triaxial_table(combined_groups)
-    
+   
     if tri_df.empty:
         st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
     else:

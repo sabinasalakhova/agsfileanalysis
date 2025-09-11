@@ -126,18 +126,18 @@ if uploaded_files:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ags groups combined per tab, button on the left
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-if combined_groups:
+    if combined_groups:
     # Sidebar: download all groups as Excel
-    all_xl = build_all_groups_excel(combined_groups)
-    with st.sidebar:
-        st.header("Downloads & Plot Options")
-        st.download_button(
-            "📥 Download ALL groups (one Excel workbook)",
-            data=all_xl,
-            file_name="ags_groups_combined.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Each AGS group is a separate sheet; all uploaded files are merged."
-        )
+        all_xl = build_all_groups_excel(combined_groups)
+        with st.sidebar:
+            st.header("Downloads & Plot Options")
+            st.download_button(
+                "📥 Download ALL groups (one Excel workbook)",
+                data=all_xl,
+                file_name="ags_groups_combined.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Each AGS group is a separate sheet; all uploaded files are merged."
+            )
 
     # Show group tables with per-group Excel download
     st.subheader("📋 AGS Groups (merged across all uploaded files)")
@@ -169,9 +169,9 @@ if combined_groups:
     if tri_df.empty:
         st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
     else:
-        # (A) s–t computations (do this BEFORE displaying the summary)
+        # (A) s–t computations 
         mode = "Effective" if stress_mode.startswith("Effective") else "Total"
-        st_df = compute_s_t(tri_df, mode=mode)
+        st_df = calculate_s_t_values(tri_df, mode=mode)
     
         # (B) Merge s,t into the Triaxial summary grid (avoid accidental many-to-many merges)
         merge_keys = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in tri_df.columns]

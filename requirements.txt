@@ -4,3 +4,4 @@ plotly
 streamlit
 xlsxwriter
 openpyxl
+scipy

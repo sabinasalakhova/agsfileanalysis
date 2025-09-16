@@ -11,33 +11,26 @@ from cleaners import coalesce_columns, to_numeric_safe, drop_singleton_rows, ded
 
 def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
-    Build a single triaxial summary table from available AGS groups:
-    - SAMP / CLSS (optional)
-    - TRIG (total stress general) or TREG (effective stress general)
-    - TRIX (AGS3 results) or TRET (AGS4 results)
+    Build a single triaxial summary table from available AGS groups.
+    Returns a DataFrame with canonical columns including CELL, DEVF, PWPF for downstream s/t calculations.
     """
-    # Get groups by priority
     samp = groups.get("SAMP", pd.DataFrame()).copy()
     clss = groups.get("CLSS", pd.DataFrame()).copy()
-    trig = groups.get("TRIG", pd.DataFrame()).copy()  # total stress general
-    treg = groups.get("TREG", pd.DataFrame()).copy()  # effective stress general
-    trix = groups.get("TRIX", pd.DataFrame()).copy()  # AGS3 results
-    tret = groups.get("TRET", pd.DataFrame()).copy()  # AGS4 results
+    trig = groups.get("TRIG", pd.DataFrame()).copy()
+    treg = groups.get("TREG", pd.DataFrame()).copy()
+    trix = groups.get("TRIX", pd.DataFrame()).copy()
+    tret = groups.get("TRET", pd.DataFrame()).copy()
 
-    # Normalize key columns for joins
-    for df in [samp, clss, trig, treg, trix, tret]:
+    # Normalize key columns for joins (don't coerce HOLE_ID to string here)
+    for df in (samp, clss, trig, treg, trix, tret):
         if df.empty:
             continue
+        # Normalize SPEC_DEPTH spellings
+        rename_map = {c: "SPEC_DEPTH" for c in df.columns if c.upper() in {"SPEC_DPTH", "SPEC_DEPTH"}}
+        if rename_map:
+            df.rename(columns=rename_map, inplace=True)
         if "HOLE_ID" not in df.columns:
             df["HOLE_ID"] = np.nan
-        # Normalize SPEC_DEPTH spelling
-        rename_map = {c: "SPEC_DEPTH" for c in df.columns if c.upper() in {"SPEC_DPTH", "SPEC_DEPTH"}}
-        df.rename(columns=rename_map, inplace=True)
-    
-        # Ensure HOLE_ID is string
-        if "HOLE_ID" in df.columns:
-            df["HOLE_ID"] = df["HOLE_ID"].astype(str)
-
 
     # Merge keys
     merge_keys = ["HOLE_ID"]
@@ -51,32 +44,28 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         merged = pd.merge(merged, clss, on=merge_keys, how="outer", suffixes=("", "_CLSS"))
 
     # add TRIG/TREG type info
-    ty_cols = []
     if not trig.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TRIG_TYPE"] if c in trig.columns]
         trig_f = trig[keep].copy()
         merged = pd.merge(merged, trig_f, on=[c for c in keep if c in merge_keys], how="outer")
-        ty_cols.append("TRIG_TYPE")
     if not treg.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TREG_TYPE"] if c in treg.columns]
         treg_f = treg[keep].copy()
         merged = pd.merge(merged, treg_f, on=[c for c in keep if c in merge_keys], how="outer")
-        ty_cols.append("TREG_TYPE")
 
-    # add TRIX/TRET result data (outer)
+    # combine TRIX and TRET results
     tri_res = pd.DataFrame()
     if not trix.empty:
         tri_res = trix.copy()
     if not tret.empty:
-        tri_res = tri_res.append(tret.copy(), ignore_index=True) if not tri_res.empty else tret.copy()
+        tri_res = pd.concat([tri_res, tret.copy()], ignore_index=True) if not tri_res.empty else tret.copy()
 
-    # Coalesce expected result columns -> unified names
     if not tri_res.empty:
         coalesce_columns(tri_res, ["SPEC_DEPTH", "SPEC_DPTH"], "SPEC_DEPTH")
         coalesce_columns(tri_res, ["HOLE_ID", "LOCA_ID"], "HOLE_ID")
-        coalesce_columns(tri_res, ["TRIX_CELL", "TRET_CELL"], "CELL")     # σ3 total cell pressure during shear
-        coalesce_columns(tri_res, ["TRIX_DEVF", "TRET_DEVF"], "DEVF")     # deviator at failure (q)
-        coalesce_columns(tri_res, ["TRIX_PWPF", "TRET_PWPF"], "PWPF")     # porewater u at failure
+        coalesce_columns(tri_res, ["TRIX_CELL", "TRET_CELL"], "CELL")
+        coalesce_columns(tri_res, ["TRIX_DEVF", "TRET_DEVF"], "DEVF")
+        coalesce_columns(tri_res, ["TRIX_PWPF", "TRET_PWPF"], "PWPF")  # ensure PWPF present
         tri_keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "DEVF", "PWPF", "SOURCE_FILE"] if c in tri_res.columns]
         tri_res = tri_res[tri_keep].copy()
         merged = pd.merge(merged, tri_res, on=[c for c in ["HOLE_ID", "SPEC_DEPTH"] if c in merged.columns], how="outer")
@@ -85,7 +74,7 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     cols_pref = [
         "HOLE_ID", "SAMP_ID", "SAMP_REF", "SAMP_TOP",
         "SPEC_REF", "SPEC_DEPTH", "SAMP_DESC", "SPEC_DESC", "GEOL_STAT",
-        "TRIG_TYPE", "TREG_TYPE",  # test types
+        "TRIG_TYPE", "TREG_TYPE",
         "CELL", "DEVF", "PWPF", "SOURCE_FILE"
     ]
     final_cols = [c for c in cols_pref if c in merged.columns]
@@ -95,7 +84,7 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     final_df = final_df.applymap(deduplicate_cell)
     expanded_df = expand_rows(final_df)
 
-    # Drop rows that are effectively empty (<=1 non-null)
+    # Drop rows that are effectively empty
     expanded_df = drop_singleton_rows(expanded_df)
 
     # Numeric cast for core fields

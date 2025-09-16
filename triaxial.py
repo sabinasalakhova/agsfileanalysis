@@ -152,19 +152,72 @@ def generate_triaxial_with_lithology(groups: Dict[str, pd.DataFrame]) -> pd.Data
 
 def calculate_s_t_values(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculates s and t values for triaxial test data.
-    Works with both AGS3 (TRIX) and AGS4 (TRET) formats.
+    Compute s and t for triaxial tests, preferring effective stresses when PWPF is present.
+    Returns a new DataFrame with computed columns and a source flag for s:
+      - SIGMA_1, SIGMA_3 (total)
+      - SIGMA_1_EFF, SIGMA_3_EFF (effective; NaN if PWPF missing)
+      - s_total, s_effective
+      - s (chosen value) and s_source ("effective" or "total")
+      - t (shear = DEVF/2)
+      - valid (boolean)
+    The function coalesces common AGS names into canonical columns, converts to numeric,
+    and returns only columns useful for merging/plotting.
     """
-    coalesce_columns(df, ["TRIX_CELL", "TRET_CELL"], "CELL")
-    coalesce_columns(df, ["TRIX_DEVF", "TRET_DEVF"], "DEVF")
-    coalesce_columns(df, ["TRIX_PWPF", "TRET_PWPF"], "PWPF")
-    to_numeric_safe(df, ["CELL", "DEVF"])
+    # operate on a copy to avoid mutating caller's DataFrame
+    df = df.copy()
 
-    df["SIGMA_1"] = df["CELL"] + df["DEVF"]
-    df["s"] = (df["SIGMA_1"] + df["CELL"]) / 2
-    df["t"] = df["DEVF"] / 2
+    # Coalesce expected alternate column names into canonical names.
+    # Replace these helpers with your project utilities if available.
+    def _coalesce(src_df, candidates, target):
+        for c in candidates:
+            if c in src_df.columns:
+                src_df[target] = src_df.get(target).combine_first(src_df[c]) if target in src_df.columns else src_df[c]
+        return src_df
 
-    return df
+    _coalesce(df, ["TRIX_CELL", "TRET_CELL", "CELL"], "CELL")
+    _coalesce(df, ["TRIX_DEVF", "TRET_DEVF", "DEVF"], "DEVF")
+    _coalesce(df, ["TRIX_PWPF", "TRET_PWPF", "PWPF"], "PWPF")
+
+    # Safe numeric conversion
+    for col in ["CELL", "DEVF", "PWPF"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Compute total principal stresses
+    # SIGMA_1 = DEVF + CELL ; SIGMA_3 = CELL
+    df["SIGMA_1"] = df.get("DEVF", 0.0) + df.get("CELL", 0.0)
+    df["SIGMA_3"] = df.get("CELL", 0.0)
+
+    # Compute effective stresses where PWPF is available (will be NaN if PWPF is NaN)
+    df["SIGMA_1_EFF"] = df["SIGMA_1"] - df.get("PWPF")
+    df["SIGMA_3_EFF"] = df["SIGMA_3"] - df.get("PWPF")
+
+    # s and t (total and effective)
+    df["s_total"]     = 0.5 * (df["SIGMA_1"] + df["SIGMA_3"])
+    df["s_effective"] = 0.5 * (df["SIGMA_1_EFF"] + df["SIGMA_3_EFF"])
+    df["t"]           = 0.5 * (df["SIGMA_1"] - df["SIGMA_3"])  # equal to DEVF/2 when values present
+
+    # Choose s: use effective if both SIGMA_1_EFF and SIGMA_3_EFF are finite; else fall back to total
+    has_eff = np.isfinite(df[["SIGMA_1_EFF", "SIGMA_3_EFF"]]).all(axis=1)
+    df["s"] = df["s_effective"].where(has_eff, df["s_total"])
+    df["s_source"] = np.where(has_eff, "effective", "total")
+
+    # Validity flag for downstream filtering
+    df["valid"] = np.isfinite(df[["s", "t"]]).all(axis=1)
+
+    # Prepare output columns (include merge keys present in input)
+    merge_cols = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "PWPF", "DEVF"] if c in df.columns]
+    out_cols = merge_cols + [
+        "SIGMA_1", "SIGMA_3", "SIGMA_1_EFF", "SIGMA_3_EFF",
+        "s_total", "s_effective", "s", "s_source", "t", "valid"
+    ]
+
+    # Preserve TEST_TYPE, SOURCE_FILE, LITH if present
+    for extra in ("TEST_TYPE", "SOURCE_FILE", "LITH"):
+        if extra in df.columns:
+            out_cols.append(extra)
+
+    return df.loc[:, [c for c in out_cols if c in df.columns]]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Deduplication

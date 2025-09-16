@@ -33,8 +33,14 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
 
     merged = samp.copy() if not samp.empty else pd.DataFrame(columns=merge_keys).copy()
 
-    if not clss.empty:
-        merged = pd.merge(merged, clss, on=merge_keys, how="outer", suffixes=("", "_CLSS"))
+    # Compute keys actually present in both DataFrames
+    common_keys = [c for c in merge_keys if c in merged.columns and c in clss.columns]
+    
+    if common_keys:
+        merged = pd.merge(merged, clss, on=common_keys, how="outer", suffixes=("", "_CLSS"))
+    else:
+        # If there are no common keys, do an outer concat to preserve rows instead of failing
+        merged = pd.concat([merged, clss], axis=0, ignore_index=True, sort=False)
 
     if not trig.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TRIG_TYPE"] if c in trig.columns]

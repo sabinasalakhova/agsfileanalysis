@@ -9,112 +9,97 @@ from cleaners import coalesce_columns, to_numeric_safe, drop_singleton_rows, ded
 # Core Table Builder
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
-    Build a single triaxial summary table from available AGS groups with robust merges.
-    Uses safe merges that only join on keys present in both frames, normalises key dtypes,
-    and falls back to concat when a sensible join is not possible.
+    Build a single triaxial summary table from available AGS groups:
+    - SAMP / CLSS (optional)
+    - TRIG (total stress general) or TREG (effective stress general)
+    - TRIX (AGS3 results) or TRET (AGS4 results)
     """
+    # Get groups by priority
     samp = groups.get("SAMP", pd.DataFrame()).copy()
     clss = groups.get("CLSS", pd.DataFrame()).copy()
-    trig = groups.get("TRIG", pd.DataFrame()).copy()
-    treg = groups.get("TREG", pd.DataFrame()).copy()
-    trix = groups.get("TRIX", pd.DataFrame()).copy()
-    tret = groups.get("TRET", pd.DataFrame()).copy()
+    trig = groups.get("TRIG", pd.DataFrame()).copy()  # total stress general
+    treg = groups.get("TREG", pd.DataFrame()).copy()  # effective stress general
+    trix = groups.get("TRIX", pd.DataFrame()).copy()  # AGS3 results
+    tret = groups.get("TRET", pd.DataFrame()).copy()  # AGS4 results
 
-    # Normalize SPEC_DEPTH spellings and ensure HOLE_ID present
-    for df in (samp, clss, trig, treg, trix, tret):
+    # Normalize key columns for joins
+    for df in [samp, clss, trig, treg, trix, tret]:
         if df.empty:
             continue
-        rename_map = {c: "SPEC_DEPTH" for c in df.columns if c.upper() in {"SPEC_DPTH", "SPEC_DEPTH"}}
-        if rename_map:
-            df.rename(columns=rename_map, inplace=True)
         if "HOLE_ID" not in df.columns:
             df["HOLE_ID"] = np.nan
+        # Normalize SPEC_DEPTH spelling
+        rename_map = {c: "SPEC_DEPTH" for c in df.columns if c.upper() in {"SPEC_DPTH", "SPEC_DEPTH"}}
+        df.rename(columns=rename_map, inplace=True)
+    
+        # Ensure HOLE_ID is string
+        if "HOLE_ID" in df.columns:
+            df["HOLE_ID"] = df["HOLE_ID"].astype(str)
 
+
+    # Merge keys
     merge_keys = ["HOLE_ID"]
     if not samp.empty and "SPEC_DEPTH" in samp.columns:
         merge_keys.append("SPEC_DEPTH")
 
     merged = samp.copy() if not samp.empty else pd.DataFrame(columns=merge_keys).copy()
 
-    def _safe_merge(left: pd.DataFrame, right: pd.DataFrame, preferred_keys: List[str], suffixes=("", "")) -> pd.DataFrame:
-        """
-        Merge left and right safely:
-        - use only keys present in both frames
-        - normalise HOLE_ID to uppercase stripped strings, numeric keys to numeric
-        - if keys contain non-scalar values or no common keys, fallback to concat
-        """
-        common = [k for k in preferred_keys if k in left.columns and k in right.columns]
-        if not common:
-            return pd.concat([left, right], axis=0, ignore_index=True, sort=False)
-
-        # Normalize types for keys
-        for k in common:
-            if k.upper() in {"HOLE_ID", "LOCA_ID"}:
-                left[k] = left[k].astype(str).str.upper().str.strip().replace({"nan": None})
-                right[k] = right[k].astype(str).str.upper().str.strip().replace({"nan": None})
-            else:
-                left[k] = pd.to_numeric(left[k], errors="coerce")
-                right[k] = pd.to_numeric(right[k], errors="coerce")
-
-        # Reject non-scalar key values (lists, arrays) — fallback to concat
-        def _has_non_scalar(df, keys):
-            for key in keys:
-                if df[key].apply(lambda v: isinstance(v, (list, tuple, set, pd.Series, np.ndarray))).any():
-                    return True
-            return False
-
-        if _has_non_scalar(left, common) or _has_non_scalar(right, common):
-            return pd.concat([left, right], axis=0, ignore_index=True, sort=False)
-
-        return pd.merge(left, right, on=common, how="outer", suffixes=suffixes)
-
-    # Merge CLSS (safe)
+    # add CLSS (outer)
     if not clss.empty:
-        merged = _safe_merge(merged, clss, merge_keys, suffixes=("", "_CLSS"))
+        merged = pd.merge(merged, clss, on=merge_keys, how="outer", suffixes=("", "_CLSS"))
 
-    # Merge TRIG (safe, only keep relevant cols)
+    # add TRIG/TREG type info
+    ty_cols = []
     if not trig.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TRIG_TYPE"] if c in trig.columns]
         trig_f = trig[keep].copy()
-        merged = _safe_merge(merged, trig_f, merge_keys)
-
-    # Merge TREG (safe, only keep relevant cols)
+        merged = pd.merge(merged, trig_f, on=[c for c in keep if c in merge_keys], how="outer")
+        ty_cols.append("TRIG_TYPE")
     if not treg.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TREG_TYPE"] if c in treg.columns]
         treg_f = treg[keep].copy()
-        merged = _safe_merge(merged, treg_f, merge_keys)
+        merged = pd.merge(merged, treg_f, on=[c for c in keep if c in merge_keys], how="outer")
+        ty_cols.append("TREG_TYPE")
 
-    # combine TRIX and TRET results
+    # add TRIX/TRET result data (outer)
     tri_res = pd.DataFrame()
     if not trix.empty:
         tri_res = trix.copy()
     if not tret.empty:
-        tri_res = pd.concat([tri_res, tret.copy()], ignore_index=True) if not tri_res.empty else tret.copy()
+        tri_res = tri_res.append(tret.copy(), ignore_index=True) if not tri_res.empty else tret.copy()
 
+    # Coalesce expected result columns -> unified names
     if not tri_res.empty:
         coalesce_columns(tri_res, ["SPEC_DEPTH", "SPEC_DPTH"], "SPEC_DEPTH")
         coalesce_columns(tri_res, ["HOLE_ID", "LOCA_ID"], "HOLE_ID")
-        coalesce_columns(tri_res, ["TRIX_CELL", "TRET_CELL"], "CELL")
-        coalesce_columns(tri_res, ["TRIX_DEVF", "TRET_DEVF"], "DEVF")
-        coalesce_columns(tri_res, ["TRIX_PWPF", "TRET_PWPF"], "PWPF")
+        coalesce_columns(tri_res, ["TRIX_CELL", "TRET_CELL"], "CELL")     # σ3 total cell pressure during shear
+        coalesce_columns(tri_res, ["TRIX_DEVF", "TRET_DEVF"], "DEVF")     # deviator at failure (q)
+        coalesce_columns(tri_res, ["TRIX_PWPF", "TRET_PWPF"], "PWPF")     # porewater u at failure
         tri_keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "DEVF", "PWPF", "SOURCE_FILE"] if c in tri_res.columns]
         tri_res = tri_res[tri_keep].copy()
-        merged = _safe_merge(merged, tri_res, ["HOLE_ID", "SPEC_DEPTH"])
+        merged = pd.merge(merged, tri_res, on=[c for c in ["HOLE_ID", "SPEC_DEPTH"] if c in merged.columns], how="outer")
 
+    # Final column subset (add useful identifiers if present)
     cols_pref = [
         "HOLE_ID", "SAMP_ID", "SAMP_REF", "SAMP_TOP",
         "SPEC_REF", "SPEC_DEPTH", "SAMP_DESC", "SPEC_DESC", "GEOL_STAT",
-        "TRIG_TYPE", "TREG_TYPE",
+        "TRIG_TYPE", "TREG_TYPE",  # test types
         "CELL", "DEVF", "PWPF", "SOURCE_FILE"
     ]
     final_cols = [c for c in cols_pref if c in merged.columns]
     final_df = merged[final_cols].copy() if final_cols else merged.copy()
 
+    # Deduplicate cell text and expand rows if any " | "
     final_df = final_df.applymap(deduplicate_cell)
     expanded_df = expand_rows(final_df)
+
+    # Drop rows that are effectively empty (<=1 non-null)
     expanded_df = drop_singleton_rows(expanded_df)
+
+    # Numeric cast for core fields
     to_numeric_safe(expanded_df, ["SPEC_DEPTH", "CELL", "DEVF", "PWPF"])
 
     return expanded_df

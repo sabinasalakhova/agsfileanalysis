@@ -232,10 +232,9 @@ if uploaded_files:
         st_df = calculate_s_t_values(tri_df)
     
         # ─── 5) Merge s,t (and LITH) into final summary ────────────────────
-        merge_keys   = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF"] 
-                        if c in tri_df.columns]
-        st_cols      = [c for c in ["s","t","s_total","s_effective","TEST_TYPE","SOURCE_FILE"]
-                        if c in st_df.columns]
+        merge_keys   = [c for c in ["HOLE_ID","SPEC_DEPTH","CELL","PWPF","DEVF"] if c in tri_df.columns]
+        st_cols      = [c for c in ["s","t","s_total","s_effective","s_source","TEST_TYPE","SOURCE_FILE"]
+                if c in st_df.columns]
     
         tri_df_with_st = (
             tri_df

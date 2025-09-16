@@ -10,6 +10,11 @@ from cleaners import coalesce_columns, to_numeric_safe, drop_singleton_rows, ded
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """
+    Build a single triaxial summary table from available AGS groups with robust merges.
+    Uses safe merges that only join on keys present in both frames, normalises key dtypes,
+    and falls back to concat when a sensible join is not possible.
+    """
     samp = groups.get("SAMP", pd.DataFrame()).copy()
     clss = groups.get("CLSS", pd.DataFrame()).copy()
     trig = groups.get("TRIG", pd.DataFrame()).copy()
@@ -33,23 +38,55 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
 
     merged = samp.copy() if not samp.empty else pd.DataFrame(columns=merge_keys).copy()
 
-    # Compute keys actually present in both DataFrames
-    common_keys = [c for c in merge_keys if c in merged.columns and c in clss.columns]
-    
-    if common_keys:
-        merged = pd.merge(merged, clss, on=common_keys, how="outer", suffixes=("", "_CLSS"))
-    else:
-        # If there are no common keys, do an outer concat to preserve rows instead of failing
-        merged = pd.concat([merged, clss], axis=0, ignore_index=True, sort=False)
+    def _safe_merge(left: pd.DataFrame, right: pd.DataFrame, preferred_keys: List[str], suffixes=("", "")) -> pd.DataFrame:
+        """
+        Merge left and right safely:
+        - use only keys present in both frames
+        - normalise HOLE_ID to uppercase stripped strings, numeric keys to numeric
+        - if keys contain non-scalar values or no common keys, fallback to concat
+        """
+        common = [k for k in preferred_keys if k in left.columns and k in right.columns]
+        if not common:
+            return pd.concat([left, right], axis=0, ignore_index=True, sort=False)
 
+        # Normalize types for keys
+        for k in common:
+            if k.upper() in {"HOLE_ID", "LOCA_ID"}:
+                left[k] = left[k].astype(str).str.upper().str.strip().replace({"nan": None})
+                right[k] = right[k].astype(str).str.upper().str.strip().replace({"nan": None})
+            else:
+                left[k] = pd.to_numeric(left[k], errors="coerce")
+                right[k] = pd.to_numeric(right[k], errors="coerce")
+
+        # Reject non-scalar key values (lists, arrays) — fallback to concat
+        def _has_non_scalar(df, keys):
+            for key in keys:
+                if df[key].apply(lambda v: isinstance(v, (list, tuple, set, pd.Series, np.ndarray))).any():
+                    return True
+            return False
+
+        if _has_non_scalar(left, common) or _has_non_scalar(right, common):
+            return pd.concat([left, right], axis=0, ignore_index=True, sort=False)
+
+        return pd.merge(left, right, on=common, how="outer", suffixes=suffixes)
+
+    # Merge CLSS (safe)
+    if not clss.empty:
+        merged = _safe_merge(merged, clss, merge_keys, suffixes=("", "_CLSS"))
+
+    # Merge TRIG (safe, only keep relevant cols)
     if not trig.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TRIG_TYPE"] if c in trig.columns]
-        merged = pd.merge(merged, trig[keep], on=[c for c in keep if c in merge_keys], how="outer")
+        trig_f = trig[keep].copy()
+        merged = _safe_merge(merged, trig_f, merge_keys)
 
+    # Merge TREG (safe, only keep relevant cols)
     if not treg.empty:
         keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "TREG_TYPE"] if c in treg.columns]
-        merged = pd.merge(merged, treg[keep], on=[c for c in keep if c in merge_keys], how="outer")
+        treg_f = treg[keep].copy()
+        merged = _safe_merge(merged, treg_f, merge_keys)
 
+    # combine TRIX and TRET results
     tri_res = pd.DataFrame()
     if not trix.empty:
         tri_res = trix.copy()
@@ -64,7 +101,7 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         coalesce_columns(tri_res, ["TRIX_PWPF", "TRET_PWPF"], "PWPF")
         tri_keep = [c for c in ["HOLE_ID", "SPEC_DEPTH", "CELL", "DEVF", "PWPF", "SOURCE_FILE"] if c in tri_res.columns]
         tri_res = tri_res[tri_keep].copy()
-        merged = pd.merge(merged, tri_res, on=[c for c in ["HOLE_ID", "SPEC_DEPTH"] if c in merged.columns], how="outer")
+        merged = _safe_merge(merged, tri_res, ["HOLE_ID", "SPEC_DEPTH"])
 
     cols_pref = [
         "HOLE_ID", "SAMP_ID", "SAMP_REF", "SAMP_TOP",
@@ -81,7 +118,6 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     to_numeric_safe(expanded_df, ["SPEC_DEPTH", "CELL", "DEVF", "PWPF"])
 
     return expanded_df
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Lithology Mapping
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

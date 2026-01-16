@@ -83,7 +83,7 @@ if uploaded_files:
             df = expand_rows(df)
 
             # 6) Clean up duplicate values within each cell
-            df = df.applymap(deduplicate_cell)
+            df = df.map(deduplicate_cell)
 
             # 7) Unify depth columns
             coalesce_columns(df, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")

@@ -93,7 +93,7 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     final_df = merged[final_cols].copy() if final_cols else merged.copy()
 
     # Deduplicate cell text and expand rows if any " | "
-    final_df = final_df.applymap(deduplicate_cell)
+    final_df = final_df.map(deduplicate_cell)
     expanded_df = expand_rows(final_df)
 
     # Drop rows that are effectively empty (<=1 non-null)

@@ -6,12 +6,13 @@ import io
 import streamlit as st
 
 # --------------------------------------------------------------------------------------
-### split quotes in the AGS
+### Robust CSV Splitter
 # --------------------------------------------------------------------------------------
 def _split_quoted_csv(line: str) -> List[str]:
     """
     Robustly splits a CSV line using the csv module.
     Handles quotes, empty fields, and escaped characters correctly.
+    Example: '"<CONT>","","Val"' -> ['<CONT>', '', 'Val']
     """
     s = line.strip()
     if not s:
@@ -23,10 +24,11 @@ def _split_quoted_csv(line: str) -> List[str]:
         reader = csv.reader(io.StringIO(s), strict=False, skipinitialspace=True)
         return next(reader)
     except Exception:
+        # Fallback if CSV parsing fails completely
         return []
 
 # --------------------------------------------------------------------------------------
-### ags version analyzer
+### AGS Version Analyzer
 # --------------------------------------------------------------------------------------
 def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
     results = {
@@ -45,7 +47,6 @@ def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
             if line.startswith("<UNIT>") or line.startswith("UNIT") or line.startswith("<UNITS>"): 
                 continue
             
-            # Simple check for version headers
             if s.startswith('"GROUP"') or s.startswith("GROUP"):
                 results["AGS4"] = "Yes"
                 if '"GROUP","LOCA"' in s or "GROUP,LOCA" in s:
@@ -62,7 +63,7 @@ def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
 
 
 # --------------------------------------------------------------------------------------
-# based on the version parses the ags file
+### Main Parser
 # --------------------------------------------------------------------------------------
 def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     analysis = analyze_ags_content(file_bytes)
@@ -82,6 +83,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     group_headings: Dict[str, List[str]] = {}
     current_group = None
     headings: List[str] = []
+    data_started = False  # Track if we are in the data section of a group
     
     parse_errors = []
 
@@ -91,6 +93,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     def append_continuation(parts: List[str]):
         """
         Appends data from a <CONT> line to the last row of the current group.
+        Handles AGS version-specific indexing rules.
         """
         if not (current_group and headings and group_data[current_group]):
             return
@@ -99,7 +102,6 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
         # AGS4 Logic: <CONT> replaces "DATA".
         # parts[0] is <CONT>. parts[1] is the first Data Value.
         # Headings[0] maps to parts[1].
-        # Shift Index: i -> i-1
         # ---------------------------------------------------------
         if is_ags4:
              for i in range(1, len(parts)):
@@ -115,12 +117,10 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
 
         # ---------------------------------------------------------
         # AGS3 Logic: <CONT> replaces the Key Field (Variable 0).
-        # parts[0] is <CONT> (Variable 0). parts[1] is Variable 1.
-        # Headings[1] maps to parts[1].
-        # Direct Mapping: i -> i
+        # parts[0] is <CONT>. parts[1] is Variable 1.
+        # Headings[1] maps to parts[1]. Direct index match.
         # ---------------------------------------------------------
         else: 
-            # Start from 1 because index 0 is <CONT> (which replaces Key)
             for i in range(1, len(parts)):
                 heading_index = i
                 val = parts[i].strip()
@@ -140,48 +140,64 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
                 parse_errors.append(f"Line {i+1}: Failed to parse")
             continue
             
-        # Clean keyword (handle quotes/spaces that might remain or encoded XML)
         raw_keyword = parts[0].upper().strip()
         
         # 1. Handle Continuation Lines
-        # Check for standard <CONT> and HTML encoded version just in case
+        # Checks for <CONT> even if it was quoted like "<CONT>"
         if raw_keyword in ["<CONT>", "&LT;CONT&GT;"]:
             append_continuation(parts)
             continue
             
-        # 2. Skip remaining Units/Metadata
+        # 2. Skip Units/Metadata
         if raw_keyword in ["<UNITS>", "UNIT", "<UNIT>"]:
             continue
 
-        # 3. AGS4 Logic
+        # 3. AGS4 Parsing
         if is_ags4:
             if raw_keyword == "GROUP":
                 if len(parts) > 1:
                     current_group = parts[1]
                     ensure_group(current_group)
                     headings = []
+                    data_started = False
             elif raw_keyword == "HEADING":
-                headings = parts[1:]
+                new_headings = parts[1:]
+                # Rule 13: Allow split headings
+                if not data_started and headings:
+                    headings.extend(new_headings)
+                else:
+                    headings = new_headings
                 if current_group:
                     group_headings[current_group] = headings
             elif raw_keyword == "DATA":
                 if current_group and headings:
-                    # parts[1] -> headings[0]
+                    data_started = True
                     row_dict = dict(zip(headings, parts[1:]))
                     group_data[current_group].append(row_dict)
 
-        # 4. AGS3 Logic
+        # 4. AGS3 Parsing
         if is_ags3:
             if raw_keyword.startswith("**"):
                 current_group = raw_keyword[2:]
                 ensure_group(current_group)
                 headings = []
+                data_started = False
             elif raw_keyword.startswith("*"):
-                headings = [p.lstrip("*") for p in parts]
+                # Clean asterisks from headings
+                new_headings = [p.lstrip("*") for p in parts if p.strip()]
+                
+                # Rule 13: Handle split headings (e.g. if line ends with comma)
+                # If we are in the header block (data hasn't started) and have existing headings, extend them.
+                if not data_started and headings:
+                    headings.extend(new_headings)
+                else:
+                    headings = new_headings
+                
                 if current_group:
                     group_headings[current_group] = headings
             elif current_group and headings:
-                # parts[0] -> headings[0]
+                # Data line
+                data_started = True
                 row_dict = dict(zip(headings, parts[:len(headings)]))
                 group_data[current_group].append(row_dict)
 
@@ -191,6 +207,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
             for err in parse_errors:
                 st.write(err)
 
+    # Convert to DataFrames and normalize
     group_dfs = {}
     for group, rows in group_data.items():
         df = pd.DataFrame(rows)

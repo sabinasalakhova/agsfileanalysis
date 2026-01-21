@@ -1,19 +1,27 @@
 from typing import Dict
 import pandas as pd 
 import io
+import re
 from cleaners import drop_singleton_rows
 
 def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
     """
     Create an Excel workbook where each group is one sheet.
+    Sanitizes sheet names to prevent Excel errors.
     """
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as xw:
         for gname, gdf in sorted(groups.items()):
             if gdf is None or gdf.empty:
                 continue
-            # Excel sheet name limit and avoid duplicates
-            sheet_name = gname[:31]
+            
+            # Sanitize sheet name: replace invalid chars [] : * ? / \ with underscore
+            # Excel rule: Sheet names cannot contain these characters.
+            safe_name = re.sub(r"[\[\]:*?/\\]", "_", gname)
+            
+            # Excel sheet name limit is 31 chars
+            sheet_name = safe_name[:31]
+            
             # Clean rows (no singleton)
             out = drop_singleton_rows(gdf)
             out.to_excel(xw, index=False, sheet_name=sheet_name)

@@ -38,9 +38,9 @@ def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
         lines = content.splitlines()
         for line in lines:
             s = line.strip()
-            if line.startswith("UNIT","<UNITS>"):
-                continue
             parts = _split_quoted_csv(line)
+            if line.startswith("<UNIT>") or line.startswith("UNIT") or line.startswith("<UNITS>"):
+                continue
             token = "<CONT>" if line.startswith('"<CONT>"') else None
             if s.startswith('"GROUP"') or s.startswith("GROUP"):
                 results["AGS4"] = "Yes"

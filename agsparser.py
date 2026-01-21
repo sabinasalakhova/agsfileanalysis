@@ -13,8 +13,8 @@ def _split_quoted_csv(line: str) -> List[str]:
     parts[0] = parts[0].lstrip('"') 
     parts[-1] = parts[-1].rstrip('"')
     return parts
-   reader = csv.reader(io.StringIO(s))
-   return next(reader)
+    reader = csv.reader(io.StringIO(s))
+    return next(reader)
 # --------------------------------------------------------------------------------------
 ### ags version analyzer
 # --------------------------------------------------------------------------------------

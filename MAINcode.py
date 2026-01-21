@@ -9,6 +9,7 @@ import streamlit as st
 from typing import List, Tuple, Dict
 import io
 import plotly.express as px
+import re
 
 # External modules
 from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file

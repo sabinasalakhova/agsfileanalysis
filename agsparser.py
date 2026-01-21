@@ -8,7 +8,7 @@ import streamlit as st
 # ROBUST CSV PARSING ENGINE (v2.0)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _parse_line(line: str) -> List[str]:
+def _split_quoted_csv(line: str) -> List[str]:
     """
     Parses a single CSV line using the standard csv library.
     This handles quotes ("val", "val"), escaped quotes ("val""val"), 

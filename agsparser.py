@@ -235,11 +235,22 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     if parse_errors:
         st.warning(f"⚠️ Warning: {len(parse_errors)} lines failed to parse.")
 
-    # 6. Final DataFrame Construction
+        # 6. Final DataFrame Construction
     group_dfs = {}
     for group, rows in group_data.items():
         df = pd.DataFrame(rows)
         if not df.empty:
+            # Normalize odd column headings early
+            rename_map = {
+                "?ETH": "WETH",
+                "?ETH_TOP": "WETH_TOP",
+                "?ETH_BASE": "WETH_BASE",
+                "?ETH_GRAD": "WETH_GRAD",
+                "?LEGD": "LEGD",
+                "?HORN": "HORN",
+            }
+            df = df.rename(columns=rename_map)
+
             # Normalize common column names
             df = df.rename(columns=lambda c: "SPEC_DEPTH" if c.upper() in {"SPEC_DPTH", "SPEC_DEPTH"}
                            else "HOLE_ID" if c.upper() in {"LOCA_ID", "HOLE_ID"}

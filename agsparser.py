@@ -12,6 +12,7 @@ def _split_quoted_csv(line: str) -> List[str]:
     """
     Robustly splits a CSV line using the csv module.
     Handles quotes, empty fields, and escaped characters correctly.
+    Example: '"<CONT>","","Val"' -> ['<CONT>', '', 'Val']
     """
     s = line.strip()
     if not s:
@@ -19,9 +20,11 @@ def _split_quoted_csv(line: str) -> List[str]:
 
     try:
         # strict=False allows for some leniency
+        # skipinitialspace=True handles cases like: "Val", "Val"
         reader = csv.reader(io.StringIO(s), strict=False, skipinitialspace=True)
         return next(reader)
     except Exception:
+        # Fallback if CSV parsing fails completely
         return []
 
 # --------------------------------------------------------------------------------------
@@ -69,7 +72,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
 
     text = file_bytes.decode("latin-1", errors="ignore")
     
-    # Filter empty lines
+    # Filter lines
     lines = [
         line.strip()
         for line in text.splitlines()

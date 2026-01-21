@@ -78,9 +78,7 @@ if uploaded_files:
             # 4) Drop rows where only one cell is populated
             df = drop_singleton_rows(df)
 
-            # 5) Expand any multi-interval rows into one record per interval
-            df = expand_rows(df)
-
+           
             # 6) Clean up duplicate values within each cell
             df = df.map(deduplicate_cell)
 

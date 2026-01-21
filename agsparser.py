@@ -23,6 +23,12 @@ def _split_quoted_csv(line: str) -> List[str]:
     except Exception:
         return []
 
+def _normalize_token(token: str) -> str:
+    if token is None:
+        return ""
+    # Strip whitespace, quotes, and any stray BOM at the start of a line
+    return token.strip().strip('"').lstrip("\ufeff").upper()
+
 def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
     """
     Quickly scans the file to determine AGS version and key features.
@@ -144,11 +150,18 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
             continue
 
         # Normalized Keyword (First token, uppercase)
-        keyword = parts[0].upper().strip()
+        keyword = _normalize_token(parts[0])
 
         # --- A. Handle Continuation Lines (Global Priority) ---
-        # Checks for <CONT>, quoted or unquoted.
+        # Handle normal <CONT> in column 0
         if keyword == "<CONT>":
+            append_continuation(parts)
+            continue
+
+        # Handle malformed lines where <CONT> is in column 1 (column 0 empty)
+        if keyword == "" and len(parts) > 1 and _normalize_token(parts[1]) == "<CONT>":
+            # Drop the leading empty field so <CONT> becomes index 0
+            parts = parts[1:]
             append_continuation(parts)
             continue
             

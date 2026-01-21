@@ -22,7 +22,7 @@ from excel_util import  add_st_charts_to_excel, build_all_groups_excel, remove_d
 # Page Setup
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.set_page_config(page_title="Triaxial Lab Test AGS Processor", layout="wide")
-st.title("Triaxial Lab Test AGS File Processor")
+st.title(" AGS File Processor")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Step 1: Upload AGS Files

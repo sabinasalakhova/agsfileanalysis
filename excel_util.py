@@ -6,14 +6,7 @@ from cleaners import drop_singleton_rows
 
 
 
-rename_map = {
-    "?ETH": "WETH",
-    "?ETH_TOP": "WETH_TOP",
-    "?ETH_BASE": "WETH_BASE",
-    "?ETH_GRAD": "WETH_GRAD",
-    "?LEGD": "LEGD",
-    "?HORN": "HORN",
-}
+
 
 
 
@@ -23,6 +16,15 @@ def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
     Create an Excel workbook where each group is one sheet.
     Sanitizes sheet names to prevent Excel errors.
     """
+    
+    rename_map = {
+        "?ETH": "WETH",
+        "?ETH_TOP": "WETH_TOP",
+        "?ETH_BASE": "WETH_BASE",
+        "?ETH_GRAD": "WETH_GRAD",
+        "?LEGD": "LEGD",
+        "?HORN": "HORN",
+    }
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as xw:
         for gname, gdf in sorted(groups.items()):

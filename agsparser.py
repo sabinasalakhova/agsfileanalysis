@@ -70,7 +70,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     lines = [
     line.strip()
     for line in text.splitlines()
-    if line.strip() and not any(line.startswith(prefix) for prefix in ["<UNIT>", "UNIT", "<UNITS>"])
+    if line.strip() and not line.strip().startswith(("<UNIT>", "UNIT", "<UNITS>", "<CONT>"))
 ]
 
     group_data: Dict[str, List[Dict[str, str]]] = {}
@@ -95,7 +95,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
         token = "<CONT>" if line.startswith('"&lt;CONT&gt;"') or line.startswith("&lt;CONT&gt;") else None
 
         if is_ags4:
-            keyword = parts[0].upper() if parts else None
+            keyword = parts[0].upper()
             if keyword == "GROUP":
                 current_group = parts[1]
                 ensure_group(current_group)
@@ -104,28 +104,19 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
                 headings = parts[1:]
                 group_headings[current_group] = headings
             elif keyword == "DATA":
-                if current_group and headings:
-                    group_data[current_group].append(dict(zip(headings, parts[1:])))
-                    if any(part.upper() == "<UNITS>" for part in parts):
-                        continue  # Skip data rows with <UNITS> again
-            elif token == "<CONT>":
-                append_continuation(parts)
-            continue
+                group_data[current_group].append(dict(zip(headings, parts[1:])))
 
         if is_ags3:
-            keyword = parts[0] if parts else None
-            if keyword.startswith("**"):
+            keyword = parts[0]
+            if keyword.startswith("**"):  # Group identifier
                 current_group = keyword[2:]
                 ensure_group(current_group)
                 headings = []
-            elif keyword.startswith("*"):
+            elif keyword.startswith("*"):  # Heading or metadata
                 headings = [p.lstrip("*") for p in parts]
                 group_headings[current_group] = headings
-            elif keyword == "<CONT>":
-                append_continuation(parts)
-            elif current_group and headings and len(parts) >= len(headings):
+            elif current_group and headings:  # Data follows headings
                 group_data[current_group].append(dict(zip(headings, parts[:len(headings)])))
-
     # Convert to DataFrames and normalize column names
     group_dfs = {}
     for group, rows in group_data.items():

@@ -20,7 +20,7 @@ def _split_quoted_csv(line: str) -> List[str]:
       
         return parts
  
-    return [p.strip().strip('"') for p in re.split(r',(?=(?:[^']*"[^']*")*[^']*$)', s)] #regex in case some errors, splits only on commas outside quotes
+     return [p.strip().strip('"') for p in re.split(r',(?=(?:[^"']*"[^"']*")*[^"']*$)', s)] #regex in case some errors, splits only on commas outside quotes
 
 
 # --------------------------------------------------------------------------------------

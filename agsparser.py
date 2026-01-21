@@ -11,15 +11,12 @@ import streamlit as st
 def _split_quoted_csv(line: str) -> List[str]:
     """
     Robustly splits a CSV line using the csv module.
-    This ensures that empty fields (e.g. "","") are preserved as empty strings,
-    maintaining the correct column indexing for continuation lines.
     """
     s = line.strip()
     if not s:
         return []
 
     try:
-        # strict=False allows for some leniency, skipinitialspace handles "Val", "Val"
         reader = csv.reader(io.StringIO(s), strict=False, skipinitialspace=True)
         return next(reader)
     except Exception:
@@ -90,38 +87,46 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     def append_continuation(parts: List[str]):
         """
         Appends data from a <CONT> line to the last row of the current group.
-        Handles indexing differences between AGS3 and AGS4.
+        Strictly handles indexing differences between AGS3 and AGS4.
         """
         if not (current_group and headings and group_data[current_group]):
             return
 
-        # AGS4 Logic: Data lines usually start with "DATA", so indices are shifted.
-        # <CONT> replaces "DATA", so parts[1] maps to headings[0].
+        # ---------------------------------------------------------
+        # AGS4 Logic: <CONT> replaces "DATA"
+        # parts[0] = <CONT>
+        # parts[1] maps to Headings[0]
+        # Shift index by -1
+        # ---------------------------------------------------------
         if is_ags4:
-             data_values = parts[1:] # Shift by 1
-             for i, val in enumerate(data_values):
-                 val = val.strip()
-                 if i < len(headings) and val:
-                     field = headings[i]
+             for i in range(1, len(parts)):
+                 heading_index = i - 1
+                 val = parts[i].strip()
+                 
+                 if heading_index < len(headings) and val:
+                     field = headings[heading_index]
                      prev = group_data[current_group][-1].get(field, "")
                      existing_values = [p.strip() for p in prev.split(" | ") if p]
                      if val not in existing_values:
                          group_data[current_group][-1][field] = f"{prev} | {val}" if prev else val
 
-        # AGS3 Logic: Data lines have no keyword.
-        # <CONT> replaces the Key Field (Index 0).
-        # parts[0] is <CONT>. parts[1] is Heading[1]. parts[i] matches Headings[i].
+        # ---------------------------------------------------------
+        # AGS3 Logic: <CONT> replaces the first Key Field (Index 0)
+        # parts[0] = <CONT>
+        # parts[1] maps to Headings[1] (NOT Headings[0])
+        # NO Shift (Direct Mapping)
+        # ---------------------------------------------------------
         else: 
-            # Start range at 1 to skip <CONT> itself
             for i in range(1, len(parts)):
-                if i < len(headings):
-                    val = parts[i].strip()
-                    if val:
-                        field = headings[i]
-                        prev = group_data[current_group][-1].get(field, "")
-                        existing_values = [p.strip() for p in prev.split(" | ") if p]
-                        if val not in existing_values:
-                            group_data[current_group][-1][field] = f"{prev} | {val}" if prev else val
+                heading_index = i
+                val = parts[i].strip()
+
+                if heading_index < len(headings) and val:
+                    field = headings[heading_index]
+                    prev = group_data[current_group][-1].get(field, "")
+                    existing_values = [p.strip() for p in prev.split(" | ") if p]
+                    if val not in existing_values:
+                        group_data[current_group][-1][field] = f"{prev} | {val}" if prev else val
 
     for i, line in enumerate(lines):
         parts = _split_quoted_csv(line)
@@ -142,7 +147,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
         if keyword in ["<UNITS>", "UNIT", "<UNIT>"]:
             continue
 
-        # 3. AGS4 Logic
+        # 3. AGS4 Parsing
         if is_ags4:
             if keyword == "GROUP":
                 if len(parts) > 1:
@@ -155,10 +160,11 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
                     group_headings[current_group] = headings
             elif keyword == "DATA":
                 if current_group and headings:
+                    # parts[1] maps to headings[0]
                     row_dict = dict(zip(headings, parts[1:]))
                     group_data[current_group].append(row_dict)
 
-        # 4. AGS3 Logic
+        # 4. AGS3 Parsing
         if is_ags3:
             if keyword.startswith("**"):
                 current_group = keyword[2:]
@@ -169,7 +175,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
                 if current_group:
                     group_headings[current_group] = headings
             elif current_group and headings:
-                # Direct mapping for AGS3
+                # parts[0] maps to headings[0]
                 row_dict = dict(zip(headings, parts[:len(headings)]))
                 group_data[current_group].append(row_dict)
 

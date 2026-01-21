@@ -72,8 +72,6 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     for line in text.splitlines()
     if line.strip() and not line.strip().startswith(("<UNIT>", "UNIT", "<UNITS>", "<CONT>"))
 ]
-        continue
-
     group_data: Dict[str, List[Dict[str, str]]] = {}
     group_headings: Dict[str, List[str]] = {}
     current_group = None

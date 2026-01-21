@@ -66,7 +66,12 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     is_ags4 = analysis.get("AGS4") == "Yes"
 
     text = file_bytes.decode("latin-1", errors="ignore")
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    #exclude <UNITS>
+    lines = [
+    line.strip()
+    for line in text.splitlines()
+    if line.strip() and not any(line.startswith(prefix) for prefix in ["<UNIT>", "UNIT", "<UNITS>"])
+]
 
     group_data: Dict[str, List[Dict[str, str]]] = {}
     group_headings: Dict[str, List[str]] = {}

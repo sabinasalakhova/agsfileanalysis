@@ -126,7 +126,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
         if not line.strip():
             continue
             
-        parts = _parse_line(line)
+        parts = _split_quoted_csv(line)
         if not parts:
             continue
 

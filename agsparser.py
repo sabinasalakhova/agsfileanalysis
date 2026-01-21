@@ -5,21 +5,22 @@ import pandas as pd
 # --------------------------------------------------------------------------------------
 ### split quotes in the AGS
 # --------------------------------------------------------------------------------------
-
-def _split_quoted_csv(line: str) -> List[str]:
-    
-    s = line.strip() #remove whitespace  
-  
-    if s.startswith('"') and s.endswith('"') and '","' in s: 
-      
-        parts = [p.replace('""', '"') for p in s.split('","')]  # split by '","' and replaces any escaped double quotes ("") with a single quote (")
-      
-        #remove outermost quotes
-        parts[0] = parts[0].lstrip('"') 
-        parts[-1] = parts[-1].rstrip('"')
-      
-        return parts
-     return [p.strip().strip('"') for p in re.split(r',(?=(?:[^"']*"[^"']*")*[^"']*$)', s)] #regex in case some errors, splits only on commas outside quotes
+| def _split_quoted_csv(line: str) -> List[str]:
+11|     
+12|     s = line.strip() #remove whitespace  
+13|     
+14|     if s.startswith('"') and s.endswith('"') and '","' in s: 
+15|         
+16|         parts = [p.replace('""', '"') for p in s.split('","')]  # split by '","' and replaces any escaped double quotes ("") with a single quote (")
+17|         
+18|         #remove outermost quotes
+19|         parts[0] = parts[0].lstrip('"') 
+20|         parts[-1] = parts[-1].rstrip('"')
+21|         
+22|         return parts
+23|     
+24|     reader = csv.reader(io.StringIO(s))
+25|     return next(reader)
 # --------------------------------------------------------------------------------------
 ### ags version analyzer
 # --------------------------------------------------------------------------------------

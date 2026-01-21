@@ -58,7 +58,14 @@ if uploaded_files:
 
     for f in uploaded_files:
         file_bytes = f.getvalue()
+        # Decode and split lines
+        all_lines = file_bytes.decode("latin-1", errors="ignore").splitlines()
+        filtered_lines = [line for line in all_lines if not line.strip().startswith("<UNIT>")]
 
+        # Use 'filtered_lines' instead of 'all_lines'
+        for line in filtered_lines:
+            flags = analyze_ags_content(file_bytes)
+            diagnostics.append((f.name, flags))
         # 1) Diagnostics
         flags = analyze_ags_content(file_bytes)
         diagnostics.append((f.name, flags))

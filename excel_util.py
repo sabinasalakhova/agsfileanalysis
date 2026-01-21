@@ -4,6 +4,20 @@ import io
 import re
 from cleaners import drop_singleton_rows
 
+
+
+rename_map = {
+    "?ETH": "WETH",
+    "?ETH_TOP": "WETH_TOP",
+    "?ETH_BASE": "WETH_BASE",
+    "?ETH_GRAD": "WETH_GRAD",
+    "?LEGD": "LEGD",
+    "?HORN": "HORN",
+}
+
+
+
+
 def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
     """
     Create an Excel workbook where each group is one sheet.

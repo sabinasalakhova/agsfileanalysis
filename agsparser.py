@@ -3,7 +3,7 @@ import re
 import pandas as pd
 import csv
 import io
-import streamlit as st  # Added to display warnings
+import streamlit as st
 
 # --------------------------------------------------------------------------------------
 ### split quotes in the AGS
@@ -74,11 +74,11 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
 
     text = file_bytes.decode("latin-1", errors="ignore")
     
-    # Pre-filter lines to remove blanks and unit definitions
+    # Pre-filter to remove obviously empty lines, but KEEP <CONT> lines
     lines = [
         line.strip()
         for line in text.splitlines()
-        if line.strip() and not line.strip().startswith(("<UNIT>", "UNIT", "<UNITS>", "<CONT>"))
+        if line.strip() and not line.strip().startswith(("<UNIT>", "UNIT", "<UNITS>"))
     ]
 
     group_data: Dict[str, List[Dict[str, str]]] = {}
@@ -86,26 +86,48 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
     current_group = None
     headings: List[str] = []
     
-    # List to store parsing errors
     parse_errors = []
 
     def ensure_group(name: str):
         group_data.setdefault(name, [])
 
+    def append_continuation(parts: List[str]):
+        """Appends data from a <CONT> line to the last row of the current group."""
+        if current_group and headings and group_data[current_group]:
+            # parts[1:] skips the <CONT> token itself
+            for i, val in enumerate(parts[1:]):
+                if i < len(headings) and val:
+                    field = headings[i]
+                    # Get the previous value (default to empty string if missing)
+                    prev = group_data[current_group][-1].get(field, "")
+                    
+                    # Avoid duplicating values if they are already present (logic from original code)
+                    # Note: " | " is used as the separator.
+                    existing_values = [p.strip() for p in prev.split(" | ") if p]
+                    
+                    if val not in existing_values:
+                        group_data[current_group][-1][field] = f"{prev} | {val}" if prev else val
+
     for i, line in enumerate(lines):
         parts = _split_quoted_csv(line)
         
-        # If parsing failed (returned empty list), record error and skip
         if not parts:
-            parse_errors.append(f"Line {i+1}: {line[:100]}...") # Store first 100 chars
+            parse_errors.append(f"Line {i+1}: Failed to parse")
             continue
             
-        if parts[0] in ["<UNITS>", "<CONT>"]:
+        keyword = parts[0].upper()
+
+        # 1. Handle Continuation Lines
+        if keyword == "<CONT>":
+            append_continuation(parts)
             continue
             
-        # AGS4 Logic
+        # 2. Skip Units/Metadata if missed by pre-filter
+        if keyword in ["<UNITS>", "UNIT", "<UNIT>"]:
+            continue
+
+        # 3. AGS4 Logic
         if is_ags4:
-            keyword = parts[0].upper()
             if keyword == "GROUP":
                 if len(parts) > 1:
                     current_group = parts[1]
@@ -121,9 +143,8 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
                     row_dict = dict(zip(headings, parts[1:]))
                     group_data[current_group].append(row_dict)
 
-        # AGS3 Logic
+        # 4. AGS3 Logic
         if is_ags3:
-            keyword = parts[0]
             if keyword.startswith("**"):  # Group identifier
                 current_group = keyword[2:]
                 ensure_group(current_group)
@@ -136,14 +157,9 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
                 row_dict = dict(zip(headings, parts[:len(headings)]))
                 group_data[current_group].append(row_dict)
 
-    # -----------------------------------------------------------
-    # Display Warnings if errors occurred
-    # -----------------------------------------------------------
+    # Display warnings if errors occurred
     if parse_errors:
-        st.warning(f"⚠️ Warning: {len(parse_errors)} lines failed to parse in this file.")
-        with st.expander("View failed lines (Debug info)"):
-            for err in parse_errors:
-                st.write(err)
+        st.warning(f"⚠️ Warning: {len(parse_errors)} lines failed to parse.")
 
     # Convert to DataFrames and normalize column names
     group_dfs = {}

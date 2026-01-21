@@ -5,7 +5,7 @@ import pandas as pd
 # --------------------------------------------------------------------------------------
 ### split quotes in the AGS
 # --------------------------------------------------------------------------------------
-| def _split_quoted_csv(line: str) -> List[str]:
+def _split_quoted_csv(line: str) -> List[str]:
     s = line.strip() #remove whitespace  
     if s.startswith('"') and s.endswith('"') and '","' in s: 
        parts = [p.replace('""', '"') for p in s.split('","')]  # split by '","' and replaces any escaped double quotes ("") with a single quote (")

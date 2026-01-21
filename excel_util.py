@@ -14,12 +14,15 @@ def build_all_groups_excel(groups: Dict[str, pd.DataFrame]) -> bytes:
         for gname, gdf in sorted(groups.items()):
             if gdf is None or gdf.empty:
                 continue
-            
-            # Sanitize sheet name: replace invalid chars [] : * ? / \ with underscore
-            # Excel rule: Sheet names cannot contain these characters.
+        
+            # apply column heading fixes
+            gdf = gdf.rename(columns=rename_map)
+        
+            # apply sheet name fixes
+            gname = rename_map.get(gname, gname)
+        
+            # sanitize + truncate as before
             safe_name = re.sub(r"[\[\]:*?/\\]", "_", gname)
-            
-            # Excel sheet name limit is 31 chars
             sheet_name = safe_name[:31]
             
             # Clean rows (no singleton)

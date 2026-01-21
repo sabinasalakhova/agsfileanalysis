@@ -9,6 +9,7 @@ import streamlit as st
 from typing import List, Tuple, Dict
 import io
 import plotly.express as px
+import re
 
 # External modules
 from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file
@@ -143,7 +144,12 @@ if uploaded_files:
             # Per-group download (Excel)
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-                drop_singleton_rows(gdf).to_excel(writer, index=False, sheet_name=gname[:31])
+                # apply column heading fixes
+                gdf_out = drop_singleton_rows(gdf).rename(columns=rename_map)
+            
+                # apply sheet name fixes
+                safe_sheet = rename_map.get(gname, gname)
+                gdf_out.to_excel(writer, index=False, sheet_name=safe_sheet[:31])
             st.download_button(
                 label=f"Download {gname} (Excel)",
                 data=buffer.getvalue(),

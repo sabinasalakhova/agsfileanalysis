@@ -133,7 +133,15 @@ if uploaded_files:
     # Step 6:  Show group tables (with per-group Excel download)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     st.subheader("📋 AGS Groups (merged across all uploaded files)")
-
+    
+    rename_map = {
+        "?ETH": "WETH",
+        "?ETH_TOP": "WETH_TOP",
+        "?ETH_BASE": "WETH_BASE",
+        "?ETH_GRAD": "WETH_GRAD",
+        "?LEGD": "LEGD",
+        "?HORN": "HORN",
+    }
     tabs = st.tabs(sorted(combined_groups.keys()))
     for tab, gname in zip(tabs, sorted(combined_groups.keys())):
         with tab:

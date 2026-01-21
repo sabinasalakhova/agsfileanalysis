@@ -106,6 +106,8 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
             elif keyword == "DATA":
                 if current_group and headings:
                     group_data[current_group].append(dict(zip(headings, parts[1:])))
+                    if any(part.upper() == "<UNITS>" for part in parts):
+                        continue  # Skip data rows with <UNITS> again
             elif token == "<CONT>":
                 append_continuation(parts)
             continue

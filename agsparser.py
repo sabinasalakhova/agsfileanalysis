@@ -9,18 +9,18 @@ import pandas as pd
 def _split_quoted_csv(line: str) -> List[str]:
     
     s = line.strip() #remove whitespace  
-    
+  
     if s.startswith('"') and s.endswith('"') and '","' in s: 
-        
+      
         parts = [p.replace('""', '"') for p in s.split('","')]  # split by '","' and replaces any escaped double quotes ("") with a single quote (")
-        
+      
         #remove outermost quotes
         parts[0] = parts[0].lstrip('"') 
         parts[-1] = parts[-1].rstrip('"')
-        
+      
         return parts
  
-    return [p.strip().strip('"') for p in re.split(r',(?=(?:[^"']*"[^"']*")*[^"']*$)', s)] #regex in case some errors, splits only on commas outside quotes
+    return [p.strip().strip('"') for p in re.split(r',(?=(?:[^']*"[^']*")*[^']*$)', s)] #regex in case some errors, splits only on commas outside quotes
 
 
 # --------------------------------------------------------------------------------------
@@ -39,7 +39,7 @@ def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
         for line in lines:
             s = line.strip()
             parts = _split_quoted_csv(line)
-            if line.startswith("<UNIT>") or line.startswith("UNIT") or line.startswith("<UNITS>"):
+            if line.startswith("<UNIT>") or line.startswith("UNIT") or line.startswith("<UNITS>"): 
                 continue
             token = "<CONT>" if line.startswith('"<CONT>"') else None
             if s.startswith('"GROUP"') or s.startswith("GROUP"):
@@ -106,7 +106,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
                 headings = parts[1:]
                 group_headings[current_group] = headings
             elif keyword == "DATA":
-                group_data[current_group].append(dict(zip(headings, parts[1:])));
+                group_data[current_group].append(dict(zip(headings, parts[1:])))
 
         if is_ags3:
             keyword = parts[0]

@@ -91,11 +91,17 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
         if not (current_group and headings and group_data[current_group]):
             return
 
+        # Pad parts to preserve positional indexing for empty fields.
+        # AGS4: parts[0] is "DATA"; AGS3: parts[0] is "<CONT>"
+        expected_len = len(headings) + 1
+        if len(parts) < expected_len:
+            parts = parts + [""] * (expected_len - len(parts))
+
         # AGS4 Rule: <CONT> replaces the "DATA" keyword.
         # "DATA" is index 0. Data starts at index 1.
         # So parts[1] maps to Headings[0]. Shift = -1.
         if is_ags4:
-            for i in range(1, len(parts)):
+            for i in range(1, expected_len):
                 heading_index = i - 1
                 _merge_val(heading_index, parts[i])
 
@@ -103,22 +109,29 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
         # parts[0] is <CONT>. parts[1] is Variable 1.
         # So parts[1] maps to Headings[1]. No Shift.
         else:
-            for i in range(1, len(parts)):
+            for i in range(1, expected_len):
                 heading_index = i
                 _merge_val(heading_index, parts[i])
 
     def _merge_val(idx: int, val: str):
-        val = val.strip()
-        if idx < len(headings) and val:
-            field = headings[idx]
-            # Get existing value for this field in the last row
-            last_row = group_data[current_group][-1]
-            prev = last_row.get(field, "")
-            
-            # Append only if unique (avoid duplicating "Val | Val")
-            existing_parts = [p.strip() for p in prev.split(" | ") if p]
-            if val not in existing_parts:
-                last_row[field] = f"{prev} | {val}" if prev else val
+        if idx >= len(headings):
+            return
+        if val is None:
+            return
+        # Only merge non-empty values; empty placeholders must NOT shift indices.
+        if not str(val).strip():
+            return
+
+        val = str(val).strip()
+        field = headings[idx]
+        # Get existing value for this field in the last row
+        last_row = group_data[current_group][-1]
+        prev = last_row.get(field, "")
+        
+        # Append only if unique (avoid duplicating "Val | Val")
+        existing_parts = [p.strip() for p in prev.split(" | ") if p]
+        if val not in existing_parts:
+            last_row[field] = f"{prev} | {val}" if prev else val
 
     # 4. Main Parsing Loop
     for i, line in enumerate(raw_lines):

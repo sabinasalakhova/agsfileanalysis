@@ -254,9 +254,9 @@ if uploaded_files:
             .pipe(remove_duplicate_tests)
         )
 
-        # ─── 6) Display summary ─────────────────────────────────────────────
+                # ─── 6) Display summary ─────────────────────────────────────────────
         st.write(f"**Triaxial summary (with s, t & lithology)** — {len(tri_df_with_st)} rows")
-        st.dataframe(tri_df_with_st, width='stretch', height=350)
+        st.dataframe(tri_df_with_st, use_container_width=True, height=350)  # DEPTH_SOURCE now visible
 
         # ─── 7) (optional) Excel download with charts ──────────────────────
         buffer = io.BytesIO()

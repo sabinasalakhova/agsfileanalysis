@@ -270,35 +270,34 @@ if uploaded_files:
         )
         st.dataframe(diag_df, width='stretch')
         st.markdown("---")
-            st.header("Triaxial Summary & s–t Plots")
-        
-            # 1) Build raw triaxial summary
+        st.header("Triaxial Summary & s–t Plots")
+             # 1) Build raw triaxial summary
             tri_df = generate_triaxial_table(combined_groups)
-        
-            if tri_df.empty:
-                st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
-        
-                # ─── 2) Normalize IDs & depths ─────────────────────────────────────
-                tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()
-                tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
-
             
-            st_df = calculate_s_t_values(tri_df) 
-
-                # ─── 6) Display summary ─────────────────────────────────────────────
-            st.write(f"**Triaxial summary (with s, t & lithology)** — {len(tri_df)} rows")
-            st.dataframe(tri_df, width='stretch', height=350)
+                if tri_df.empty:
+                    st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
+            
+                    # ─── 2) Normalize IDs & depths ─────────────────────────────────────
+                    tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()
+                    tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
     
-            # ─── 7) (optional) Excel download with charts ──────────────────────
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-                tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
-                st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
-                add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
+                
+                st_df = calculate_s_t_values(tri_df) 
     
-            st.download_button(
-                "📥 Download Triaxial + s–t (Excel, with charts)",
-                data=buffer.getvalue(),
-                file_name="triaxial_summary_s_t.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+                    # ─── 6) Display summary ─────────────────────────────────────────────
+                st.write(f"**Triaxial summary (with s, t & lithology)** — {len(tri_df)} rows")
+                st.dataframe(tri_df, width='stretch', height=350)
+        
+                # ─── 7) (optional) Excel download with charts ──────────────────────
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+                    tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
+                    st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
+                    add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
+        
+                st.download_button(
+                    "📥 Download Triaxial + s–t (Excel, with charts)",
+                    data=buffer.getvalue(),
+                    file_name="triaxial_summary_s_t.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )

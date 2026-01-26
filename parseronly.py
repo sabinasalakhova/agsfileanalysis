@@ -8,6 +8,7 @@ import io
 
 # External modules
 from agsparser import analyze_ags_content, parse_ags_file, find_hole_id_column
+from excel_util import build_all_groups_excel
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Page Setup
@@ -16,7 +17,7 @@ from agsparser import analyze_ags_content, parse_ags_file, find_hole_id_column
 st.set_page_config(page_title="AGS File Parser", layout="wide")
 st.title("AGS File Processor")
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━��━━━━━━━
 # Step 1: Upload AGS Files
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -31,6 +32,7 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]] = []
     diagnostics: List[Tuple[str, Dict[str, bool]]] = []
+    combined_groups: Dict[str, pd.DataFrame] = {}
 
     for f in uploaded_files:
         file_bytes = f.getvalue()
@@ -65,11 +67,19 @@ if uploaded_files:
             # Store the cleaned group
             cleaned_groups[group_name] = df
 
+            # Combine groups by group name for "all groups" download
+            if group_name not in combined_groups:
+                combined_groups[group_name] = []
+            combined_groups[group_name].append(df)
+
         # Collect this file’s cleaned groups
         all_group_dfs.append((f.name, cleaned_groups))
 
+    # Combine groups across files
+    combined_groups = {g: pd.concat(dfs, ignore_index=True) for g, dfs in combined_groups.items()}
+
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # Combine and Display Results
+    # Display Groups and Enable Downloads
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     st.subheader("📋 AGS Groups (Parsed and Prefixed)")
 
@@ -82,11 +92,55 @@ if uploaded_files:
             st.write(f"**{group_name}** — {len(group_df)} rows")
             st.dataframe(group_df, use_container_width=True)
 
+    # Add download options in the sidebar
     with st.sidebar:
+        st.header("Downloads")
+        
+        # Option 1: Download all groups as combined Excel
+        if combined_groups:
+            # Build Excel for all groups
+            all_xl = build_all_groups_excel(combined_groups)
+            st.download_button(
+                "📥 Download ALL groups (Excel)",
+                data=all_xl,
+                file_name="ags_groups_combined.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Each AGS group is a sheet; all uploaded files are merged by group."
+            )
+
+        # Option 2: Build custom Excel
+        st.markdown("---")
+        st.header("Build Your Own Excel")
+
+        # Allow user to select groups and columns for the new Excel
+        selected_groups = st.multiselect(
+            "Select groups to include:",
+            options=combined_groups.keys(),
+            default=list(combined_groups.keys())
+        )
+
+        selected_columns = st.multiselect(
+            "Select columns to include (will pick from ALL chosen groups):",
+            options=list({col for g in selected_groups for col in combined_groups[g].columns}),
+        )
+
+        if selected_groups and selected_columns:
+            custom_buffer = io.BytesIO()
+            with pd.ExcelWriter(custom_buffer, engine="xlsxwriter") as writer:
+                for group_name in selected_groups:
+                    group_df = combined_groups[group_name][selected_columns].copy()
+                    group_df.to_excel(writer, index=False, sheet_name=group_name[:31])
+
+            st.download_button(
+                "📥 Download Selected Groups/Columns (Excel)",
+                data=custom_buffer.getvalue(),
+                file_name="custom_ags_groups.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        st.markdown("---")
         st.header("Parsing Diagnostics")
         diag_df = pd.DataFrame(
             [{"File": n, **flags} for n, flags in diagnostics]
         )
         st.dataframe(diag_df, use_container_width=True)
-
-        st.markdown("---")

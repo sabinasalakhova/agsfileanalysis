@@ -10,6 +10,7 @@ from typing import List, Tuple, Dict
 import io
 import plotly.express as px
 import re
+import xlsxwriter
 
 
 # External modules

@@ -131,6 +131,13 @@ if uploaded_files:
         "?LEGD": "LEGD",
         "?HORN": "HORN",
     }
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+                # apply column heading fixes
+                gdf_out = drop_singleton_rows(gdf).rename(columns=rename_map)
+            
+                # apply sheet name fixes
+                safe_sheet = rename_map.get(gname, gname)
+                gdf_out.to_excel(writer, index=False, sheet_name=safe_sheet[:31])
     tabs = st.tabs(sorted(combined_groups.keys()))
     for tab, gname in zip(tabs, sorted(combined_groups.keys())):
         with tab:
@@ -140,13 +147,7 @@ if uploaded_files:
 
             # Per-group download (Excel)
             buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-                # apply column heading fixes
-                gdf_out = drop_singleton_rows(gdf).rename(columns=rename_map)
             
-                # apply sheet name fixes
-                safe_sheet = rename_map.get(gname, gname)
-                gdf_out.to_excel(writer, index=False, sheet_name=safe_sheet[:31])
             st.download_button(
                 label=f"Download {gname} (Excel)",
                 data=buffer.getvalue(),

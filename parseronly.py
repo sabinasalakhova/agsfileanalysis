@@ -45,6 +45,9 @@ if uploaded_files:
 
     for f in uploaded_files:
         file_bytes = f.getvalue()
+
+        # Extract the first 5 characters of the file name
+        file_prefix = f.name[:5].upper()
         
         # 1) Diagnostics
         flags = analyze_ags_content(file_bytes)
@@ -59,6 +62,15 @@ if uploaded_files:
             # skip empty groups
             if df is None or df.empty:
                 continue
+            # Add SOURCE_FILE column
+            df["SOURCE_FILE"] = f.name
+
+            # Find and prefix HOLE_ID
+            hole_id_col = find_hole_id_column(df.columns)
+            if hole_id_col:
+                # Ensure HOLE_ID is a string and prefix it
+                df[hole_id_col] = df[hole_id_col].astype(str).str.strip()
+                df[hole_id_col] = file_prefix + "_" + df[hole_id_col]
 
             # 3) Normalize column names
             df = normalize_columns(df)
@@ -66,9 +78,6 @@ if uploaded_files:
             # 7)  depth columns
             
             to_numeric_safe(df, ["DEPTH_FROM", "DEPTH_TO"])
-
-            # 8) Tag origin file
-            df["SOURCE_FILE"] = f.name
 
             # store cleaned group
             cleaned_groups[group_name] = df

@@ -15,7 +15,7 @@ import re
 from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file
 from cleaners import deduplicate_cell, drop_singleton_rows, expand_rows, combine_groups, coalesce_columns, to_numeric_safe, normalize_columns
 from triaxial import generate_triaxial_table, generate_triaxial_with_lithology, calculate_s_t_values, remove_duplicate_tests
-
+from map_concat import combine_ags_data, build_continuous_intervals, map_group_to_intervals, simplify_weathering_grade
 from excel_util import  add_st_charts_to_excel, build_all_groups_excel, remove_duplicate_tests
 
 
@@ -272,4 +272,64 @@ if uploaded_files:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
+    # ──────────────────────────────────────────────────────────────
+    # New Section: Combine into Continuous Geological Intervals
+    # ──────────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.header("Combine into Continuous Intervals")
 
+    if combined_groups:
+        available_groups = sorted(combined_groups.keys())
+        selected_groups = st.multiselect(
+            "Select groups to include in continuous log:",
+            options=available_groups,
+            default=[g for g in ['GEOL', 'WETH', 'CORE', 'DETL'] if g in available_groups]
+        )
+
+        if st.button("Generate Continuous Intervals"):
+            with st.spinner("Building intervals and mapping attributes..."):
+                try:
+                    result_df = combine_ags_data(
+                        combined_groups,
+                        selected_groups=selected_groups,
+                        hole_col='GIU_HOLE_ID'   # ← change if your hole column has different name
+                    )
+
+                    if result_df.empty:
+                        st.warning("No depth intervals could be created from the selected groups.")
+                    else:
+                        st.success(f"Created {len(result_df)} intervals across boreholes.")
+                        st.dataframe(
+                            result_df.style.format(precision=2, na_rep="-"),
+                            use_container_width=True,
+                            height=500
+                        )
+
+                        # Download buttons
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            csv_buf = io.StringIO()
+                            result_df.to_csv(csv_buf, index=False)
+                            st.download_button(
+                                "📥 Download CSV",
+                                csv_buf.getvalue(),
+                                "continuous_intervals.csv",
+                                "text/csv"
+                            )
+
+                        with col2:
+                            excel_buf = io.BytesIO()
+                            with pd.ExcelWriter(excel_buf, engine='xlsxwriter') as writer:
+                                result_df.to_excel(writer, index=False, sheet_name="Intervals")
+                            st.download_button(
+                                "📥 Download Excel",
+                                excel_buf.getvalue(),
+                                "continuous_intervals.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+
+                except Exception as e:
+                    st.error(f"Error during interval combination: {str(e)}")
+                    st.info("Common causes: missing DEPTH_FROM/DEPTH_TO columns, no numeric depths, or empty selected groups.")
+    else:
+        st.info("Upload and process AGS files first.")

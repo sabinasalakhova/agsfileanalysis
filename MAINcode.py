@@ -214,18 +214,18 @@ if uploaded_files:
         if giu_df is None:
             st.error("Please upload and clean the GIU table first.")
             st.stop()
-
         # ─── 2) Normalize IDs & depths ─────────────────────────────────────
-        tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()
+        # Prefer GIU_HOLE_ID if it exists (from prefixing), else HOLE_ID
+        id_col = 'GIU_HOLE_ID' if 'GIU_HOLE_ID' in tri_df.columns else 'HOLE_ID'
+        
+        if id_col in tri_df.columns:
+            tri_df[id_col] = tri_df[id_col].astype(str).str.upper().str.strip()
+            tri_df['HOLE_ID'] = tri_df[id_col]  # Ensure consistent name for display
+        else:
+            st.warning(f"No hole ID column found (tried {id_col}, HOLE_ID). Using 'UNKNOWN'.")
+            tri_df['HOLE_ID'] = 'UNKNOWN'
+        
         tri_df["SPEC_DEPTH"] = pd.to_numeric(tri_df["SPEC_DEPTH"], errors="coerce")
-
-
-        giu_df["HOLE_ID"]     = (giu_df["HOLE_ID"]
-                                 .astype(str)
-                                 .str.upper()
-                                 .str.strip())
-        giu_df["DEPTH_FROM"]  = pd.to_numeric(giu_df["DEPTH_FROM"], errors="coerce")
-        giu_df["DEPTH_TO"]    = pd.to_numeric(giu_df["DEPTH_TO"],   errors="coerce")
 
         # ─── 3) Map lithology from GIU into tri_df ─────────────────────────
         def map_litho(row):

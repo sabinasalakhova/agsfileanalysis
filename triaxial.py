@@ -158,3 +158,75 @@ def calculate_s_t_values(tri_df: pd.DataFrame) -> pd.DataFrame:
             df[col] = df[col].round(2)
     
     return df
+
+def generate_triaxial_with_lithology(
+    groups: Dict[str, pd.DataFrame],
+    giu_df: Optional[pd.DataFrame] = None,
+    hole_col: str = 'HOLE_ID',
+    depth_col: str = 'SPEC_DEPTH'
+) -> pd.DataFrame:
+    """
+    Generate triaxial summary table with attached lithology (from GEOL or GIU).
+    """
+    # Get base triaxial table
+    tri_df = generate_triaxial_table(groups)
+    if tri_df.empty:
+        return tri_df
+
+    # Normalize identifiers
+    tri_df[hole_col] = tri_df[hole_col].astype(str).str.strip().str.upper()
+    tri_df[depth_col] = pd.to_numeric(tri_df[depth_col], errors='coerce')
+
+    # Try GEOL group first (if present)
+    if 'GEOL' in groups and not groups['GEOL'].empty:
+        geol = groups['GEOL'].copy()
+        geol[hole_col] = geol[hole_col].astype(str).str.strip().str.upper()
+        to_numeric_safe(geol, ['DEPTH_FROM', 'DEPTH_TO'])
+
+        def map_from_geol(row):
+            h, d = row[hole_col], row[depth_col]
+            if pd.isna(h) or pd.isna(d):
+                return None
+            mask = (
+                (geol[hole_col] == h) &
+                (geol['DEPTH_FROM'] <= d) &
+                (geol['DEPTH_TO'] >= d)
+            )
+            match = geol.loc[mask]
+            if not match.empty:
+                desc = match['GEOL_DESC'].iloc[0]
+                leg = match.get('GEOL_LEG', pd.NA).iloc[0]
+                return f"{leg} - {desc}" if pd.notna(leg) else desc
+            return None
+
+        tri_df['LITH_GEOL'] = tri_df.apply(map_from_geol, axis=1)
+
+    # Fallback / supplement with GIU table
+    if giu_df is not None and not giu_df.empty:
+        giu = giu_df.copy()
+        giu[hole_col] = giu[hole_col].astype(str).str.strip().str.upper()
+        to_numeric_safe(giu, ['DEPTH_FROM', 'DEPTH_TO'])
+
+        def map_from_giu(row):
+            h, d = row[hole_col], row[depth_col]
+            if pd.isna(h) or pd.isna(d):
+                return None
+            mask = (
+                (giu[hole_col] == h) &
+                (giu['DEPTH_FROM'] <= d) &
+                (giu['DEPTH_TO'] >= d)
+            )
+            match = giu.loc[mask]
+            return match['LITH'].iloc[0] if not match.empty else None
+
+        tri_df['LITH_GIU'] = tri_df.apply(map_from_giu, axis=1)
+
+        # Prefer GEOL if available, else GIU
+        tri_df['LITH'] = tri_df['LITH_GEOL'].combine_first(tri_df['LITH_GIU'])
+        tri_df = tri_df.drop(columns=['LITH_GEOL', 'LITH_GIU'], errors='ignore')
+
+    elif 'LITH_GEOL' in tri_df.columns:
+        tri_df['LITH'] = tri_df['LITH_GEOL']
+        tri_df = tri_df.drop(columns=['LITH_GEOL'])
+
+    return tri_df

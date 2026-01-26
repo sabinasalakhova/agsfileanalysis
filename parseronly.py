@@ -137,9 +137,18 @@ if uploaded_files:
             custom_buffer = io.BytesIO()
             with pd.ExcelWriter(custom_buffer, engine="xlsxwriter") as writer:
                 for group_name in selected_groups:
-                    group_df = combined_groups[group_name][columns_to_include].copy()
-                    group_df.to_excel(writer, index=False, sheet_name=group_name[:31])
-
+                    group_df = combined_groups[group_name]
+        
+                    # Filter columns_to_include to only those that are present in the current DataFrame
+                    valid_columns = [col for col in columns_to_include if col in group_df.columns]
+                    if not valid_columns:
+                        # Skip this group if none of the selected columns are valid
+                        st.warning(f"Skipping group '{group_name}' as none of the selected columns are present.")
+                        continue
+        
+                    # Write the filtered DataFrame to an Excel sheet
+                    group_df[valid_columns].to_excel(writer, index=False, sheet_name=group_name[:31])
+        
             st.download_button(
                 "📥 Download Selected Groups/Columns (Excel)",
                 data=custom_buffer.getvalue(),

@@ -296,8 +296,9 @@ if uploaded_files:
                 try:
                     result_df = combine_ags_data(
                         combined_groups,
+                        giu_df=giu_df,  # Pass GIU for LITH mapping
                         selected_groups=selected_groups,
-                        hole_col='GIU_HOLE_ID'   # ← change if your hole column has different name
+                        legacy_fill=True  # Enable legacy mode
                     )
 
                     if result_df.empty:

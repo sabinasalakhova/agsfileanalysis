@@ -80,7 +80,7 @@ if uploaded_files:
     if failed_files:
         st.error("Some files failed to process:")
         st.dataframe(pd.DataFrame(failed_files, columns=["File", "Error"]))
-    width
+    
     # 9) Combine across files
     combined_groups = combine_groups(all_group_dfs)
     

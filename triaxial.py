@@ -105,3 +105,56 @@ def remove_duplicate_tests(df: pd.DataFrame) -> pd.DataFrame:
         df = df[mask].reset_index(drop=True)
 
     return df
+def calculate_s_t_values(tri_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate stress path parameters s and t for triaxial tests.
+    
+    Assumptions / formulas (common in effective/total stress paths):
+    - t = deviator stress / 2 = DEVF / 2
+    - s_total     = (σ1 + σ3)/2 = CELL + DEVF/2
+    - s_effective = (σ1' + σ3')/2 = (CELL - PWPF) + DEVF/2
+    
+    Returns a new DataFrame with added columns: s, t, s_total, s_effective, s_source
+    """
+    df = tri_df.copy()
+    
+    # Ensure numeric columns
+    numeric_cols = ['CELL', 'DEVF', 'PWPF']
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Calculate t (deviator stress / 2)
+    if 'DEVF' in df.columns:
+        df['t'] = df['DEVF'] / 2
+    else:
+        df['t'] = np.nan
+    
+    # Total mean stress s_total
+    if 'CELL' in df.columns and 'DEVF' in df.columns:
+        df['s_total'] = df['CELL'] + (df['DEVF'] / 2)
+    else:
+        df['s_total'] = np.nan
+    
+    # Effective mean stress s_effective (needs pore pressure PWPF)
+    if all(c in df.columns for c in ['CELL', 'DEVF', 'PWPF']):
+        df['s_effective'] = (df['CELL'] - df['PWPF']) + (df['DEVF'] / 2)
+    else:
+        df['s_effective'] = np.nan
+    
+    # Choose which s to use as primary 's' column (effective preferred if available)
+    df['s'] = df['s_effective'].fillna(df['s_total'])
+    
+    # Flag source of s
+    df['s_source'] = np.where(
+        df['s_effective'].notna(), 
+        'Effective (CELL - PWPF + DEVF/2)',
+        np.where(df['s_total'].notna(), 'Total (CELL + DEVF/2)', 'Missing')
+    )
+    
+    # Optional: round to reasonable precision
+    for col in ['s', 't', 's_total', 's_effective']:
+        if col in df.columns:
+            df[col] = df[col].round(2)
+    
+    return df

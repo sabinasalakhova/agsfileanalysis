@@ -254,6 +254,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
 
         # 6. Final DataFrame Construction
     group_dfs = {}
+
     for group_name, rows in group_data.items():
         df = pd.DataFrame(rows)
         if not df.empty:
@@ -268,21 +269,8 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
             }
             df = df.rename(columns=rename_map)
 
-            # Normalize common column names
-            df = df.rename(columns=lambda c: "SPEC_DEPTH" if c.upper() in {"SPEC_DPTH", "SPEC_DEPTH"}
-                           else "HOLE_ID" if c.upper() in {"LOCA_ID", "HOLE_ID"}
-                           else c)
-
-            # Add source file column
-            df["SOURCE_FILE"] = file_bytes.name
-
-            # Prefix HOLE_ID with filename prefix if applicable
-            hole_id_col = find_hole_id_column(df.columns)
-            if hole_id_col:
-                filename_prefix = file_bytes.name[:5]  # first 5 characters of the filename
-                df[hole_id_col] = df[hole_id_col].astype(str).str.strip()  # Ensure string, avoid NaN issues
-                df[hole_id_col] = f"{filename_prefix}_" + df[hole_id_col]
+            # Add source file column using the provided file name
+            df["SOURCE_FILE"] = file_name
 
         group_dfs[group_name] = df
-
     return group_dfs

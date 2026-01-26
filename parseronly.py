@@ -272,10 +272,9 @@ if uploaded_files:
         st.markdown("---")
         st.header("Triaxial Summary & s–t Plots")
              # 1) Build raw triaxial summary
-            tri_df = generate_triaxial_table(combined_groups)
-            
-                if tri_df.empty:
-                    st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
+        tri_df = generate_triaxial_table(combined_groups)
+            if tri_df.empty:
+                st.info("No triaxial data (TRIX/TRET + TRIG/TREG) detected in the uploaded files.")
             
                     # ─── 2) Normalize IDs & depths ─────────────────────────────────────
                     tri_df["HOLE_ID"]    = tri_df["HOLE_ID"].astype(str).str.upper().str.strip()

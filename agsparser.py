@@ -23,6 +23,23 @@ def _split_quoted_csv(line: str) -> List[str]:
     except Exception:
         return []
 
+def find_hole_id_column(columns: List[str]) -> Optional[str]:
+    """Identify HOLE_ID or common variants in a list of columns."""
+    # Create a map of uppercase column names to original names
+    uc_map = {str(c).upper(): c for c in columns}
+
+    # List of common primary keys for boreholes
+    candidates = [
+        "HOLE_ID", "HOLEID", "HOLE", "LOCA_ID", "LOCATION_ID"
+    ]
+
+    for cand in candidates:
+        if cand in uc_map:
+            return uc_map[cand]
+
+    return None
+
+
 def _normalize_token(token: str) -> str:
     if token is None:
         return ""
@@ -237,7 +254,7 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
 
         # 6. Final DataFrame Construction
     group_dfs = {}
-    for group, rows in group_data.items():
+    for group_name, rows in group_data.items():
         df = pd.DataFrame(rows)
         if not df.empty:
             # Normalize odd column headings early
@@ -255,6 +272,17 @@ def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
             df = df.rename(columns=lambda c: "SPEC_DEPTH" if c.upper() in {"SPEC_DPTH", "SPEC_DEPTH"}
                            else "HOLE_ID" if c.upper() in {"LOCA_ID", "HOLE_ID"}
                            else c)
-        group_dfs[group] = df
+
+            # Add source file column
+            df["SOURCE_FILE"] = file_bytes.name
+
+            # Prefix HOLE_ID with filename prefix if applicable
+            hole_id_col = find_hole_id_column(df.columns)
+            if hole_id_col:
+                filename_prefix = file_bytes.name[:5]  # first 5 characters of the filename
+                df[hole_id_col] = df[hole_id_col].astype(str).str.strip()  # Ensure string, avoid NaN issues
+                df[hole_id_col] = f"{filename_prefix}_" + df[hole_id_col]
+
+        group_dfs[group_name] = df
 
     return group_dfs

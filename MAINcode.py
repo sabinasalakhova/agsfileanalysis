@@ -14,7 +14,7 @@ import re
 # External modules
 from agsparser import analyze_ags_content, _split_quoted_csv, parse_ags_file
 from cleaners import deduplicate_cell, drop_singleton_rows, expand_rows, combine_groups, coalesce_columns, to_numeric_safe, normalize_columns
-from triaxial import generate_triaxial_table, generate_triaxial_with_lithology, calculate_s_t_values, remove_duplicate_tests
+from triaxial import generate_triaxial_table, calculate_s_t_values, remove_duplicate_tests
 from map_concat import combine_ags_data, build_continuous_intervals, map_group_to_intervals, simplify_weathering_grade
 from excel_util import  add_st_charts_to_excel, build_all_groups_excel, remove_duplicate_tests
 

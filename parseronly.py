@@ -44,7 +44,7 @@ if uploaded_files:
         try:
             file_bytes = f.getvalue()
             # Extract safe file prefix
-            file_prefix = re.sub(r'[^A-Z0-9]', '', f.name.split('.')[0].upper())[:5]
+            file_prefix = re.sub(r'[^A-Z0-9]', '', f.name.split('.')[0].upper())[:6]
             
             # 1) Diagnostics
             flags = analyze_ags_content(file_bytes)
@@ -154,6 +154,14 @@ if uploaded_files:
                 help="Enable this to combine all selected groups into one sheet in the output Excel file."
             )
             
+            merge_on_keys = False
+            if concat_option:
+                merge_on_keys = st.checkbox(
+                    "Merge horizontally on common keys (instead of vertical concat)",
+                    value=False,
+                    help="If checked, groups will be merged on matching HOLE_ID, HOLE_TYPE, SAMP_REF, DEPTH_FROM, DEPTH_TO where available."
+                )
+            
             # Dynamic column selection for individual groups
             group_column_selections = {}
             for group_name in selected_groups:
@@ -201,8 +209,9 @@ if uploaded_files:
                 try:
                     with pd.ExcelWriter(custom_buffer, engine="xlsxwriter") as writer:
                         if concat_option:
-                            # Concatenate data across groups
+                            # Concatenate or merge data across groups
                             concatenated_df = pd.DataFrame()
+                            group_dfs = []
                             for group_name in selected_groups:
                                 group_df = combined_groups[group_name].copy()
                                 
@@ -216,10 +225,29 @@ if uploaded_files:
                                 valid_columns = group_column_selections.get(group_name, group_df.columns)
                                 group_df = group_df[[c for c in valid_columns if c in group_df.columns]]
                                 
+                                # Handle point depths for merge
+                                if merge_on_keys:
+                                    if 'SPEC_DEPTH' in group_df.columns and 'DEPTH_FROM' not in group_df.columns:
+                                        group_df['DEPTH_FROM'] = group_df['SPEC_DEPTH']
+                                        group_df['DEPTH_TO'] = group_df['SPEC_DEPTH']
+                                
                                 # Add group identifier column
                                 group_df['SOURCE_GROUP'] = group_name
                                 
-                                concatenated_df = pd.concat([concatenated_df, group_df], ignore_index=True)
+                                group_dfs.append(group_df)
+                            
+                            if merge_on_keys and len(group_dfs) > 1:
+                                keys = ['HOLE_ID', 'HOLE_TYPE', 'SAMP_REF', 'DEPTH_FROM', 'DEPTH_TO']
+                                merged_df = group_dfs[0]
+                                for right in group_dfs[1:]:
+                                    common_keys = [k for k in keys if k in merged_df.columns and k in right.columns]
+                                    if common_keys:
+                                        merged_df = pd.merge(merged_df, right, on=common_keys, how='outer', suffixes=('', '_dup'))
+                                    else:
+                                        st.warning(f"No common keys to merge {right['SOURCE_GROUP'].iloc[0]}")
+                                concatenated_df = merged_df
+                            else:
+                                concatenated_df = pd.concat(group_dfs, ignore_index=True)
                             
                             # Save to Excel
                             if not concatenated_df.empty:

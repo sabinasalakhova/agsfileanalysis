@@ -184,7 +184,7 @@ if uploaded_files:
 
         giu_df = drop_singleton_rows(giu_df)
         giu_df = expand_rows(giu_df)
-        giu_df = giu_df.applymap(deduplicate_cell)
+        giu_df = giu_df.map(deduplicate_cell)
         coalesce_columns(giu_df, ["DEPTH_FROM" ,"START_DEPTH"], "DEPTH_FROM")
         coalesce_columns(giu_df, ["DEPTH_TO" ,"END_DEPTH"],     "DEPTH_TO")
         to_numeric_safe(giu_df, ["DEPTH_FROM" ,"DEPTH_TO"])

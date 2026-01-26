@@ -133,6 +133,9 @@ if uploaded_files:
         "?LEGD": "LEGD",
         "?HORN": "HORN",
     }
+
+    custom_buffer = io.BytesIO()
+
     with pd.ExcelWriter(custom_buffer, engine="xlsxwriter") as writer:
                 # apply column heading fixes
                 gdf_out = drop_singleton_rows(gdf).rename(columns=rename_map)

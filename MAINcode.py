@@ -6,7 +6,7 @@
 
 import pandas as pd
 import streamlit as st
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import io
 import plotly.express as px
 import re

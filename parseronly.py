@@ -89,7 +89,7 @@ if uploaded_files:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     with st.expander("File diagnostics (AGS type & key groups)", expanded=False):
         diag_df = pd.DataFrame([{"File": n, **flags} for (n, flags) in diagnostics])
-        st.dataframe(diag_df, use_container_width=True)
+        st.dataframe(diag_df, width='stretch'=True)
     
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # Step 5: Sidebar: downloads and plotting options
@@ -279,7 +279,7 @@ if uploaded_files:
         with tab:
             gdf = combined_groups[gname]
             st.write(f"**{gname}** — {len(gdf)} rows")
-            st.dataframe(gdf, use_container_width=True, height=350)
+            st.dataframe(gdf, width='stretch'=True, height=350)
             
             # Per-group download (Excel)
             buffer = io.BytesIO()
@@ -319,4 +319,4 @@ if uploaded_files:
                 
                 # ─── 6) Display summary ─────────────────────────────────────────────
                 st.write(f"**Triaxial summary (with s, t & lithology)** — {len(tri_df)} rows")
-                st.dataframe(tri_df, use_container_width=True, height=350)
+                st.dataframe(tri_df, width='stretch'=True, height=350)

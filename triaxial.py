@@ -54,6 +54,15 @@ def generate_triaxial_table(groups: Dict[str, pd.DataFrame]) -> pd.DataFrame:
             loca = groups.get("LOCA", pd.DataFrame())
             common_keys = [c for c in ['HOLE_ID', 'SAMP_REF'] if c in trix_tret.columns and c in loca.columns]
             trix_tret = pd.merge(trix_tret, loca[['HOLE_ID']], on=common_keys, how='left')
+            
+    # Fallback / ensure HOLE_ID exists again
+    if 'HOLE_ID' not in trix_tret.columns or trix_tret['HOLE_ID'].isna().all():
+        # Try to find any column that might be hole ID
+        possible_hole_cols = ['GIU_HOLE_ID', 'LOCA_ID', 'HOLE', 'LOCATION_ID']
+        for col in possible_hole_cols:
+            if col in trix_tret.columns and not trix_tret[col].isna().all():
+                trix_tret['HOLE_ID'] = trix_tret[col]
+                break
 
     # Step 5: Fallback & unify depths (add DEPTH_SOURCE for transparency)
     coalesce_columns(trix_tret, ["DEPTH_FROM", "SAMP_TOP"], "DEPTH_FROM")

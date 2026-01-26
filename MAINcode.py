@@ -48,7 +48,7 @@ giu_file = st.file_uploader(
     key="giu_uploader",
     help="Required columns: HOLE_ID or LOCA_ID, DEPTH_FROM, DEPTH_TO, LITH"
 )
-
+giu_base = st.text_input("Enter GIU base prefix (e.g., GIU123):", value="GIU") 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Step 3: Clean AGS DATA
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -56,49 +56,54 @@ giu_file = st.file_uploader(
 if uploaded_files:
     all_group_dfs: List[Tuple[str, Dict[str, pd.DataFrame]]] = []
     diagnostics: List[Tuple[str, Dict[str, bool]]] = []
+    
+    # User inputs GIU base prefix once (outside the loop)
+    giu_base = st.text_input(
+        "Enter GIU base prefix (e.g., GIU123):",
+        value="GIU",
+        help="This prefix will be added to HOLE_ID for each file (e.g., GIU123_1_BH01)"
+    )
 
-    for f in uploaded_files:
+    for file_idx, f in enumerate(uploaded_files):
         file_bytes = f.getvalue()
         
         # 1) Diagnostics
         flags = analyze_ags_content(file_bytes)
         diagnostics.append((f.name, flags))
-
+        
         # 2) Parse into per-group DataFrames
-        file_bytes = f.getvalue()
         raw_groups: Dict[str, pd.DataFrame] = parse_ags_file(file_bytes, f.name)
         cleaned_groups: Dict[str, pd.DataFrame] = {}
-
+        
+        # Per-file GIU number (unique per file)
+        giu_no = f"{giu_base}_{file_idx + 1}" if giu_base else f"FILE_{file_idx + 1}"
+        
         for group_name, df in raw_groups.items():
-            # skip empty groups
             if df is None or df.empty:
                 continue
-
-            # 3) Normalize column names
+            
+            # Cleaning steps (same as before)
             df = normalize_columns(df)
-
-            # 4) Drop rows where only one cell is populated
             df = drop_singleton_rows(df)
-
-           
-            # 6) Clean up duplicate values within each cell
             df = df.map(deduplicate_cell)
-
-            # 7) Unify depth columns
             coalesce_columns(df, ["DEPTH_FROM", "START_DEPTH"], "DEPTH_FROM")
-            coalesce_columns(df, ["DEPTH_TO",   "END_DEPTH"],   "DEPTH_TO")
+            coalesce_columns(df, ["DEPTH_TO", "END_DEPTH"], "DEPTH_TO")
             to_numeric_safe(df, ["DEPTH_FROM", "DEPTH_TO"])
-
-            # 8) Tag origin file
             df["SOURCE_FILE"] = f.name
-
-            # store cleaned group
+            
+            # ── IMPORTANT: Add GIU prefixing here ───────────────────────────────
+            df["GIU_NO"] = giu_no 
+            hole_id_col = find_hole_id_column(df.columns)
+            if hole_id_col:
+                df[hole_id_col] = df[hole_id_col].astype(str).str.strip()
+                df["GIU_HOLE_ID"] = giu_no + "_" + df[hole_id_col]
+            
             cleaned_groups[group_name] = df
-
-        # collect this file’s cleaned groups
+        
+        # Collect this file’s cleaned groups
         all_group_dfs.append((f.name, cleaned_groups))
 
-    # 9) Combine across files
+    # 9) Combine across files (now includes GIU_NO and GIU_HOLE_ID in every group)
     combined_groups = combine_groups(all_group_dfs)
 
     # Now `combined_groups` contains one cleaned DataFrame per AGS group,

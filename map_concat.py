@@ -1,6 +1,13 @@
+# interval_utils.py
+"""
+Utilities for building continuous depth intervals and mapping attributes
+from various AGS groups onto those intervals.
+"""
+
 import pandas as pd
 import numpy as np
 from typing import List, Optional, Dict
+
 
 def build_continuous_intervals(
     df: pd.DataFrame,
@@ -11,18 +18,19 @@ def build_continuous_intervals(
     """
     Create a non-overlapping, continuous depth interval table per borehole
     using ALL unique depth boundaries from the input data.
-    
+
     Returns
     -------
     pd.DataFrame
         Columns: [hole_col, 'DEPTH_FROM', 'DEPTH_TO', 'THICKNESS_M']
     """
-    if not all(c in df.columns for c in [hole_col, depth_from_col, depth_to_col]):
-        raise ValueError(f"Required columns missing: {hole_col}, {depth_from_col}, {depth_to_col}")
+    required = [hole_col, depth_from_col, depth_to_col]
+    if not all(c in df.columns for c in required):
+        raise ValueError(f"Required columns missing: {', '.join(required)}")
 
     # Collect all unique depth points per hole
     depth_points = (
-        df[[hole_col, depth_from_col, depth_to_col]]
+        df[required]
         .melt(id_vars=[hole_col], value_name='depth')
         .dropna(subset=['depth'])
         .groupby(hole_col)['depth']
@@ -61,22 +69,26 @@ def map_group_to_intervals(
     fill_method: str = 'ffill'
 ) -> pd.DataFrame:
     """
-    Map values from a source group (e.g. GEOL, CORE, WETH) onto continuous intervals
-    using interval overlap (any overlap → assign value).
-    
-    Supports ffill/bfill or first-match logic.
+    Map values from a source group onto continuous intervals using overlap logic.
+    Supports forward-fill within each borehole if requested.
     """
-    if source_df.empty:
+    if source_df.empty or value_col not in source_df.columns:
         return intervals.copy()
 
-    # Prepare source with interval boundaries
-    source = source_df[[hole_col, source_from, source_to, value_col]].copy()
+    required = [hole_col, source_from, source_to, value_col]
+    if not all(c in source_df.columns for c in required[:3]):
+        return intervals.copy()  # silently skip if source lacks depth info
+
+    source = source_df[required].copy()
     source = source.rename(columns={source_from: 'src_from', source_to: 'src_to'})
 
-    # Merge_asof style: find intervals that overlap with source records
+    # Sort both tables
+    intervals_sorted = intervals.sort_values(['DEPTH_FROM'])
+    source_sorted = source.sort_values(['src_from'])
+
     merged = pd.merge_asof(
-        intervals.sort_values(['DEPTH_FROM']),
-        source.sort_values(['src_from']),
+        intervals_sorted,
+        source_sorted,
         left_on='DEPTH_FROM',
         right_on='src_from',
         by=hole_col,
@@ -84,23 +96,25 @@ def map_group_to_intervals(
         suffixes=('', '_source')
     )
 
-    # Keep only rows where intervals overlap source
+    # Keep value only where real overlap exists
     overlap_mask = (
         (merged['DEPTH_FROM'] < merged['src_to']) &
         (merged['DEPTH_TO'] > merged['src_from'])
     )
     merged.loc[overlap_mask, value_col] = merged.loc[overlap_mask, value_col + '_source']
 
-    # Optional: forward-fill within hole if needed
+    # Optional forward-fill within each hole
     if fill_method == 'ffill':
         merged[value_col] = merged.groupby(hole_col)[value_col].ffill()
 
-    return merged.drop(columns=[c for c in merged.columns if '_source' in c or c in ['src_from', 'src_to']])
+    # Clean up temporary columns
+    drop_cols = [c for c in merged.columns if c.endswith('_source') or c in ['src_from', 'src_to']]
+    return merged.drop(columns=drop_cols)
 
 
 def simplify_weathering_grade(series: pd.Series) -> pd.Series:
     """
-    Convert detailed weathering grades to simplified Roman numeral.
+    Convert detailed weathering grades (e.g. III/IV) to simplified Roman numeral.
     """
     grade_map = {
         r'^I(/II)?$': 'I',
@@ -110,126 +124,90 @@ def simplify_weathering_grade(series: pd.Series) -> pd.Series:
         r'^(V(/VI)?|IV/V|V/IV)': 'V',
         r'^VI(/V)?$': 'VI',
     }
-    
+
     simplified = series.astype(str).str.strip()
     for pattern, value in grade_map.items():
         simplified = simplified.str.replace(pattern, value, regex=True)
-    
+
     return simplified
 
 
 def combine_ags_data(
-    uploaded_excel_files: List,
+    combined_groups: Dict[str, pd.DataFrame],
     selected_groups: Optional[List[str]] = None,
     hole_col: str = 'GIU_HOLE_ID',
     default_groups: List[str] = ['CORE', 'DETL', 'FRAC', 'GEOL', 'WETH']
 ) -> pd.DataFrame:
     """
-    Modern, vectorized version of combining AGS Excel sheets into one continuous
-    interval-based geological log per borehole.
-    
+    Combine selected AGS groups into a single continuous interval-based log.
+
     Parameters
     ----------
-    uploaded_excel_files : list of file-like objects
-        Excel files (each with sheets like HOLE, CORE, GEOL, etc.)
+    combined_groups : Dict[str, pd.DataFrame]
+        Output from your combine_groups() function
     selected_groups : list of str, optional
-        Which groups/sheets to process (default: CORE, DETL, FRAC, GEOL, WETH)
+        Groups to include (default: CORE, DETL, FRAC, GEOL, WETH)
     hole_col : str
-        Column name for borehole identifier (usually 'GIU_HOLE_ID')
-    
-    Returns
-    -------
-    pd.DataFrame
-        Continuous intervals with mapped attributes from all groups
+        Borehole identifier column
     """
     if selected_groups is None:
         selected_groups = default_groups
 
-    # Full group list we care about
-    all_groups = ['HOLE'] + selected_groups
-
-    master_intervals = None
-    all_source_dfs = {}
-
-    for file_obj in uploaded_excel_files:
-        file_name = getattr(file_obj, 'name', 'unknown.xlsx')
-
-        # Read all requested sheets
-        group_dict = {}
-        for g in all_groups:
-            try:
-                group_dict[g] = pd.read_excel(file_obj, sheet_name=g)
-            except ValueError:
-                group_dict[g] = pd.DataFrame()
-
-        if 'HOLE' not in group_dict or group_dict['HOLE'].empty:
-            continue
-
-        # Normalize column names early
-        for g in group_dict:
-            if not group_dict[g].empty:
-                group_dict[g].columns = group_dict[g].columns.str.strip().str.upper()
-
-        # Collect all depth intervals across all groups
-        depth_df = pd.DataFrame()
-        for g in selected_groups:
-            if g not in group_dict or group_dict[g].empty:
-                continue
-            src = group_dict[g]
+    # Collect all depth records from selected groups
+    depth_records = []
+    for g in selected_groups:
+        if g in combined_groups and not combined_groups[g].empty:
+            src = combined_groups[g]
             if 'DEPTH_FROM' in src.columns and 'DEPTH_TO' in src.columns:
-                depth_df = pd.concat([depth_df, src[['DEPTH_FROM', 'DEPTH_TO']]], ignore_index=True)
+                temp = src[[hole_col, 'DEPTH_FROM', 'DEPTH_TO']].copy()
+                depth_records.append(temp)
 
-        if depth_df.empty:
-            continue
-
-        # Build continuous intervals for this file
-        intervals = build_continuous_intervals(
-            depth_df.assign(**{hole_col: group_dict['HOLE'][hole_col].iloc[0]}),
-            hole_col=hole_col
-        )
-
-        # Merge attributes from each source group
-        for group_name in selected_groups:
-            if group_name not in group_dict or group_dict[group_name].empty:
-                continue
-
-            src_df = group_dict[group_name]
-            if 'DEPTH_FROM' not in src_df.columns or 'DEPTH_TO' not in src_df.columns:
-                continue
-
-            # Define which column to pull from each group
-            value_col_map = {
-                'CORE': 'CORE_RQD',     # example – adjust to your actual columns
-                'DETL': 'DETL_DESC',
-                'FRAC': 'FRAC_FI',
-                'GEOL': 'GEOL_DESC',    # or 'GEOL_LEG' ?
-                'WETH': 'WETH_GRAD'
-            }
-
-            if group_name in value_col_map:
-                val_col = value_col_map[group_name]
-                if val_col in src_df.columns:
-                    intervals = map_group_to_intervals(
-                        intervals,
-                        src_df,
-                        hole_col=hole_col,
-                        value_col=val_col
-                    )
-
-        # Accumulate
-        if master_intervals is None:
-            master_intervals = intervals
-        else:
-            master_intervals = pd.concat([master_intervals, intervals], ignore_index=True)
-
-    if master_intervals is None or master_intervals.empty:
+    if not depth_records:
         return pd.DataFrame()
 
-    # Final cleanup & weathering simplification
+    depth_df = pd.concat(depth_records, ignore_index=True)
+
+    # Build continuous intervals
+    master_intervals = build_continuous_intervals(
+        depth_df,
+        hole_col=hole_col
+    )
+
+    # Define mapping: group → column to extract
+    value_col_map = {
+        'CORE': 'CORE_RQD',     # ← change to your actual column name
+        'DETL': 'DETL_DESC',
+        'FRAC': 'FRAC_FI',
+        'GEOL': 'GEOL_DESC',    # or 'GEOL_LEG' ?
+        'WETH': 'WETH_GRAD'
+        # Add more as needed, e.g.:
+        # 'SAMP': 'SAMP_TYPE',
+        # 'TRIX': 'DEVF'
+    }
+
+    # Map values from each selected group
+    for group_name in selected_groups:
+        if group_name not in combined_groups or combined_groups[group_name].empty:
+            continue
+
+        src_df = combined_groups[group_name]
+        if 'DEPTH_FROM' not in src_df.columns or 'DEPTH_TO' not in src_df.columns:
+            continue
+
+        if group_name in value_col_map:
+            val_col = value_col_map[group_name]
+            if val_col in src_df.columns:
+                master_intervals = map_group_to_intervals(
+                    master_intervals,
+                    src_df,
+                    hole_col=hole_col,
+                    value_col=val_col
+                )
+
+    # Weathering simplification (if present)
     if 'WETH_GRAD' in master_intervals.columns:
         master_intervals['WETH'] = simplify_weathering_grade(master_intervals['WETH_GRAD'])
 
-    # Add any other final columns you want (e.g. FI, Details, GEOL, TCR, RQD...)
-    # They should already be mapped if you added them to value_col_map
-
+    # Final sort & reset index
+    return master_intervals.sort_values([hole_col, 'DEPTH_FROM']).reset_index(drop=True)
     return master_intervals.sort_values([hole_col, 'DEPTH_FROM']).reset_index(drop=True)

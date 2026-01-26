@@ -289,7 +289,7 @@ if uploaded_files:
                 # ─── 7) (optional) Excel download with charts ──────────────────────
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            tri_df_with_st.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
+            tri_df.to_excel(writer, index=False, sheet_name="Triaxial_Summary")
             st_df.to_excel(writer, index=False, sheet_name="s_t_Values")
             add_st_charts_to_excel(writer, st_df, sheet_name="s_t_Values")
         

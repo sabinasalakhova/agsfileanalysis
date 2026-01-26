@@ -79,7 +79,7 @@ def analyze_ags_content(file_bytes: bytes) -> Dict[str, str]:
         pass
     return results
 
-def parse_ags_file(file_bytes: bytes) -> Dict[str, pd.DataFrame]:
+def parse_ags_file(file_bytes: bytes, file_name: str) -> Dict[str, pd.DataFrame]:
     """
     Main parser. Reads AGS3/4 files, handling continuation lines and 
     split headings robustly.

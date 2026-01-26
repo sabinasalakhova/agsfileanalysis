@@ -65,6 +65,7 @@ if uploaded_files:
         diagnostics.append((f.name, flags))
 
         # 2) Parse into per-group DataFrames
+        file_bytes = f.getvalue()
         raw_groups: Dict[str, pd.DataFrame] = parse_ags_file(file_bytes, f.name)
         cleaned_groups: Dict[str, pd.DataFrame] = {}
 

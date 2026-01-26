@@ -1,6 +1,6 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Imports
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━���━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import pandas as pd
 import streamlit as st
 from typing import List, Tuple, Dict
@@ -17,7 +17,7 @@ from excel_util import build_all_groups_excel
 st.set_page_config(page_title="AGS File Parser", layout="wide")
 st.title("AGS File Processor")
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━��━━━━━━━
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Step 1: Upload AGS Files
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -112,30 +112,40 @@ if uploaded_files:
         st.markdown("---")
         st.header("Build Your Own Excel")
 
-        # Allow user to select groups and columns for the new Excel
+        # Allow user to select groups and provide convenience in choosing columns
         selected_groups = st.multiselect(
             "Select groups to include:",
             options=combined_groups.keys(),
             default=list(combined_groups.keys())
         )
 
+        all_columns = sorted(
+            {col for g in selected_groups for col in combined_groups[g].columns}
+        )
         selected_columns = st.multiselect(
-            "Select columns to include (will pick from ALL chosen groups):",
-            options=list({col for g in selected_groups for col in combined_groups[g].columns}),
+            "Select columns to include (leave blank for ALL columns):",
+            options=all_columns,
+            default=[],  # Default to empty (meaning "all columns")
+            help="Leave blank to include all columns from each selected group."
         )
 
-        if selected_groups and selected_columns:
+        # Default behavior - include all columns if none are specified
+        columns_to_include = selected_columns if selected_columns else all_columns
+
+        if selected_groups and columns_to_include:
+            # Generate the "Build Your Own Excel" file
             custom_buffer = io.BytesIO()
             with pd.ExcelWriter(custom_buffer, engine="xlsxwriter") as writer:
                 for group_name in selected_groups:
-                    group_df = combined_groups[group_name][selected_columns].copy()
+                    group_df = combined_groups[group_name][columns_to_include].copy()
                     group_df.to_excel(writer, index=False, sheet_name=group_name[:31])
 
             st.download_button(
                 "📥 Download Selected Groups/Columns (Excel)",
                 data=custom_buffer.getvalue(),
                 file_name="custom_ags_groups.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Excel file with selected groups and columns."
             )
 
         st.markdown("---")

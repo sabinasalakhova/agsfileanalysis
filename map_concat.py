@@ -138,54 +138,67 @@ def combine_ags_data(
     hole_col: str = 'GIU_HOLE_ID',
     default_groups: List[str] = ['CORE', 'DETL', 'FRAC', 'GEOL', 'WETH']
 ) -> pd.DataFrame:
-    """
-    Combine selected AGS groups into a single continuous interval-based log.
-
-    Parameters
-    ----------
-    combined_groups : Dict[str, pd.DataFrame]
-        Output from your combine_groups() function
-    selected_groups : list of str, optional
-        Groups to include (default: CORE, DETL, FRAC, GEOL, WETH)
-    hole_col : str
-        Borehole identifier column
-    """
     if selected_groups is None:
         selected_groups = default_groups
 
-    # Collect all depth records from selected groups
+    # ── 1. Prepare depth records with fallback unification ──────────────────────
     depth_records = []
+
     for g in selected_groups:
-        if g in combined_groups and not combined_groups[g].empty:
-            src = combined_groups[g]
-            if 'DEPTH_FROM' in src.columns and 'DEPTH_TO' in src.columns:
-                temp = src[[hole_col, 'DEPTH_FROM', 'DEPTH_TO']].copy()
-                depth_records.append(temp)
+        if g not in combined_groups or combined_groups[g].empty:
+            continue
+
+        src = combined_groups[g].copy()
+
+        # Normalize column names (already done in app, but safe)
+        src.columns = src.columns.str.strip().str.upper()
+
+        # Fallback depth columns (point → interval)
+        coalesce_columns(src, ["DEPTH_FROM", "SAMP_TOP", "SAMPLE_TOP", "START_DEPTH"], "DEPTH_FROM")
+        coalesce_columns(src, ["DEPTH_TO",   "SAMP_BASE", "SAMPLE_BASE", "END_DEPTH"],   "DEPTH_TO")
+
+        # If only point depth exists → make it interval (DEPTH_FROM = DEPTH_TO)
+        point_cols = ["SPEC_DEPTH", "SAMPLE_DEPTH", "TEST_DEPTH"]
+        for pc in point_cols:
+            if pc in src.columns and 'DEPTH_FROM' not in src.columns:
+                src['DEPTH_FROM'] = src[pc]
+                src['DEPTH_TO']   = src[pc]
+
+        # Ensure numeric
+        to_numeric_safe(src, ["DEPTH_FROM", "DEPTH_TO"])
+
+        # Only keep rows that have some depth info
+        has_depth = src["DEPTH_FROM"].notna() | src["DEPTH_TO"].notna()
+        if has_depth.any():
+            temp = src[has_depth][[hole_col, "DEPTH_FROM", "DEPTH_TO"]].copy()
+            temp["SOURCE_GROUP"] = g  # helpful for debugging
+            depth_records.append(temp)
 
     if not depth_records:
+        st.warning("No depth information found in selected groups.")
         return pd.DataFrame()
 
     depth_df = pd.concat(depth_records, ignore_index=True)
 
-    # Build continuous intervals
+    # ── 2. Build continuous intervals ──────────────────────────────────────────
     master_intervals = build_continuous_intervals(
         depth_df,
         hole_col=hole_col
     )
 
-    # Define mapping: group → column to extract
+    # ── 3. Add DEPTH_SOURCE for transparency ───────────────────────────────────
+    master_intervals['DEPTH_SOURCE'] = 'Interval (multi-group)'
+
+    # ── 4. Map attributes from each group (unchanged) ──────────────────────────
     value_col_map = {
-        'CORE': 'CORE_RQD',     # ← change to your actual column name
+        'CORE': 'CORE_RQD',
         'DETL': 'DETL_DESC',
         'FRAC': 'FRAC_FI',
-        'GEOL': 'GEOL_DESC',    # or 'GEOL_LEG' ?
+        'GEOL': 'GEOL_DESC',
         'WETH': 'WETH_GRAD'
-        # Add more as needed, e.g.:
-        # 'SAMP': 'SAMP_TYPE',
-        # 'TRIX': 'DEVF'
+        # Add more: 'SAMP': 'SAMP_TYPE', etc.
     }
 
-    # Map values from each selected group
     for group_name in selected_groups:
         if group_name not in combined_groups or combined_groups[group_name].empty:
             continue
@@ -204,10 +217,11 @@ def combine_ags_data(
                     value_col=val_col
                 )
 
-    # Weathering simplification (if present)
+    # ── 5. Weathering simplification ───────────────────────────────────────────
     if 'WETH_GRAD' in master_intervals.columns:
         master_intervals['WETH'] = simplify_weathering_grade(master_intervals['WETH_GRAD'])
 
-    # Final sort & reset index
-    return master_intervals.sort_values([hole_col, 'DEPTH_FROM']).reset_index(drop=True)
-    return master_intervals.sort_values([hole_col, 'DEPTH_FROM']).reset_index(drop=True)
+    # ── 6. Final cleanup ───────────────────────────────────────────────────────
+    master_intervals = master_intervals.sort_values([hole_col, 'DEPTH_FROM']).reset_index(drop=True)
+
+    return master_intervals

@@ -44,7 +44,7 @@ if uploaded_files:
         try:
             file_bytes = f.getvalue()
             # Extract safe file prefix
-            file_prefix = re.sub(r'[^A-Z0-9]', '', f.name.split('.')[0].upper())[:6]
+            file_prefix = re.sub(r'[^A-Z0-9]', '', f.name.split('.')[0].upper())[:5]
             
             # 1) Diagnostics
             flags = analyze_ags_content(file_bytes)

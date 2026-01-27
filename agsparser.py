@@ -5,7 +5,7 @@ import io
 import streamlit as st
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ROBUST CSV PARSING ENGINE (v2.0)
+# PARSING ENGINE (v2.0)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def _split_quoted_csv(line: str) -> List[str]:
